@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AULA RGB Studio</title>
+<link rel="icon" href="/favicon.ico">
 <style>
   @font-face { font-family: "Unbounded"; font-weight: 700; font-display: swap; src: url(/fonts/unbounded-cyrillic-700.woff2) format("woff2"); unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
   @font-face { font-family: "Unbounded"; font-weight: 700; font-display: swap; src: url(/fonts/unbounded-latin-700.woff2) format("woff2"); unicode-range: U+0000-00FF, U+2000-206F, U+20AC, U+2122; }
@@ -28,7 +29,8 @@
 
   /* ---------- top bar ---------- */
   .top { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding-bottom: 16px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
-  .brand { font: 700 15px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; }
+  .brand { font: 700 15px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; display: flex; align-items: center; gap: 10px; }
+  .brand img { width: 30px; height: 30px; }
   .brand span { color: var(--text-3); }
   nav.tabs { display: flex; gap: 2px; }
   .tab { background: none; border: 0; padding: 8px 12px; border-radius: 8px; color: var(--text-2); font-weight: 600; font-size: 14px; }
@@ -191,7 +193,7 @@
 
 <div class="wrap">
   <header class="top">
-    <div class="brand">AULA RGB <span>Studio</span></div>
+    <div class="brand"><img src="/logo.png" alt="">AULA RGB <span>Studio</span></div>
     <nav class="tabs" role="tablist">
       <button class="tab" role="tab" aria-selected="true" data-page="live">Анимации</button>
       <button class="tab" role="tab" aria-selected="false" data-page="mem">Память клавиатуры</button>

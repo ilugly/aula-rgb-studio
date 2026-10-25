@@ -1,44 +1,188 @@
-"""Draws assets/icon.ico (tray + .exe icon): a dark tile with three rows of keys lit pink → violet."""
-import os
-from PIL import Image, ImageDraw, ImageFilter
+"""Draws the app logo: assets/icon.png and assets/icon.ico (tray, .exe, page header, browser tab).
+
+python tools/make_icon.py            → writes the chosen variant (VARIANT below)
+python tools/make_icon.py --sheet DIR → writes DIR/logo-variants.png to compare all variants
+"""
+import math, os, random, sys
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-S = 256
-PINK, VIOLET = (255, 79, 216), (106, 61, 255)
+VARIANT = "outline"
+S = 1024
+PINK, PINK_DARK, WHITE, BLOOD = (255, 46, 160), (196, 18, 120), (255, 255, 255), (150, 0, 24)
 
 
-def lerp(a, b, t):
-    return tuple(round(x + (y - x) * t) for x, y in zip(a, b))
+def taper(d, pts, w0, w1):
+    """A sharp limb: straight segments narrowing from w0 to w1."""
+    lens = [math.dist(a, b) for a, b in zip(pts, pts[1:])]
+    total, done = sum(lens), 0.0
+    for (a, b), L in zip(zip(pts, pts[1:]), lens):
+        wa, wb = w0 + (w1 - w0) * done / total, w0 + (w1 - w0) * (done + L) / total
+        done += L
+        nx, ny = (b[1] - a[1]) / L, -(b[0] - a[0]) / L
+        d.polygon([(a[0] + nx * wa / 2, a[1] + ny * wa / 2), (b[0] + nx * wb / 2, b[1] + ny * wb / 2),
+                   (b[0] - nx * wb / 2, b[1] - ny * wb / 2), (a[0] - nx * wa / 2, a[1] - ny * wa / 2)], fill=255)
+        d.ellipse((a[0] - wa / 2, a[1] - wa / 2, a[0] + wa / 2, a[1] + wa / 2), fill=255)
 
 
-def draw():
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((8, 8, S - 8, S - 8), radius=56, fill=(22, 22, 28, 255))
-    keys = []
-    rows = [(4, 0), (4, 0), (3, 1)]  # keys per row, last row has a wide space bar
-    top, h, gap = 62, 36, 12
-    for r, (n, wide) in enumerate(rows):
-        y = top + r * (h + gap)
-        widths = [1] * n if not wide else [1, 2, 1]
-        units = sum(widths)
-        x, w1 = 44, (S - 88 - gap * (len(widths) - 1)) / units
-        for w in widths:
-            keys.append((x, y, x + w1 * w + gap * (w - 1), y + h))
-            x += w1 * w + gap * w
-    glow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    g = ImageDraw.Draw(glow)
-    for x1, y1, x2, y2 in keys:
-        c = lerp(PINK, VIOLET, ((x1 + x2) / 2 - 44) / (S - 88) * .7 + (y1 - top) / 200 * .3)
-        g.rounded_rectangle((x1, y1, x2, y2), radius=9, fill=c + (255,))
-    img.alpha_composite(glow.filter(ImageFilter.GaussianBlur(10)))
-    img.alpha_composite(glow)
-    return img
+def silhouette(scale=1.0, cy_frac=.46, scar=True):
+    """Angular spider mask: high sharp knees, faceted chest, long pointed abdomen."""
+    m = Image.new("L", (S, S), 0)
+    d = ImageDraw.Draw(m)
+    cx, cy, k = S / 2, S * cy_frac, scale
+    legs = [((30, -70), (200, -330), (330, -120)), ((40, -35), (300, -200), (450, 60)),
+            ((40, 5), (310, -60), (440, 280)), ((30, 45), (230, 70), (300, 420))]
+    for hip, knee, tip in legs:
+        for s in (-1, 1):
+            taper(d, [(cx + s * hip[0] * k, cy + hip[1] * k), (cx + s * knee[0] * k, cy + knee[1] * k),
+                      (cx + s * tip[0] * k, cy + tip[1] * k)], 46 * k, 6 * k)
+    poly = lambda pts: d.polygon([(cx + x * k, cy + y * k) for x, y in pts], fill=255)
+    poly([(0, -165), (95, -95), (80, 40), (0, 75), (-80, 40), (-95, -95)])
+    poly([(0, 30), (140, 130), (120, 300), (0, 470), (-120, 300), (-140, 130)])
+    for s in (-1, 1):
+        taper(d, [(cx + s * 35 * k, cy - 150 * k), (cx + s * 70 * k, cy - 240 * k), (cx + s * 30 * k, cy - 300 * k)], 34 * k, 4 * k)
+    if scar:
+        d.line([(cx - 120 * k, cy + 230 * k), (cx + 120 * k, cy + 200 * k)], fill=0, width=int(14 * k))
+    return m
+
+
+def fill(mask, top=PINK, bottom=PINK_DARK):
+    grad = Image.new("RGBA", (S, S))
+    gd = ImageDraw.Draw(grad)
+    for y in range(S):
+        t = y / S
+        gd.line([(0, y), (S, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)) + (255,))
+    out = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    out.paste(grad, (0, 0), mask)
+    return out
+
+
+def v_sharp():
+    """Clean angular silhouette in pink."""
+    return fill(silhouette())
+
+
+def v_glitch():
+    """The same spider split into white and blood-red ghosts, cut by a few glitch slices."""
+    m = silhouette()
+    out = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    for (dx, dy), col, a in (((18, 7), BLOOD, 235), ((-15, -4), WHITE, 150)):
+        layer = Image.new("RGBA", (S, S), col + (0,))
+        layer.putalpha(ImageChops.offset(m, dx, dy).point(lambda v: v * a // 255))
+        out.alpha_composite(layer)
+    out.alpha_composite(fill(m))
+    rnd = random.Random(993)
+    for _ in range(3):
+        y, h, dx = rnd.randrange(int(S * .38), int(S * .8)), rnd.randrange(10, 22), rnd.choice((-1, 1)) * rnd.randrange(16, 32)
+        band = out.crop((0, y, S, y + h))
+        out.paste((0, 0, 0, 0), (0, y, S, y + h))
+        out.alpha_composite(band, (dx, y))
+    return out
+
+
+def v_outline(stroke=31):
+    """Line art: only the contour of the spider, drawn as a pink stroke (thicker for tiny tray sizes)."""
+    m = silhouette(scar=False).filter(ImageFilter.MaxFilter(9 + stroke // 3 // 2 * 2))
+    inner = m.filter(ImageFilter.MinFilter(stroke))
+    return fill(ImageChops.subtract(m, inner))
+
+
+PIXEL = ["................",
+         ".#............#.",
+         "..#..........#..",
+         "#..#..####..#..#",
+         ".#..#######.#..#",
+         "..#.#######..#..",
+         "#..#.######.#..#",
+         ".##..######..##.",
+         "....########....",
+         ".##.########.##.",
+         "#..#.######.#..#",
+         "..#..######..#..",
+         ".#....####....#.",
+         ".#.....##.....#.",
+         "................",
+         "................"]
+
+
+def v_pixel():
+    """8-bit spider on a 16 × 16 grid: crisp in the tray, like a lit key cluster."""
+    small = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    for y, row in enumerate(PIXEL):
+        for x, ch in enumerate(row):
+            if ch == "#":
+                small.putpixel((x, y), PINK if y < 8 else PINK_DARK)
+    return small.resize((S, S), Image.NEAREST)
+
+
+def v_thread():
+    """A smaller spider hanging on a thread from the top edge."""
+    m = silhouette(scale=.62, cy_frac=.6, scar=False)
+    d = ImageDraw.Draw(m)
+    d.line([(S / 2, 0), (S / 2, S * .6 - 165 * .62)], fill=255, width=16)
+    return fill(m)
+
+
+VARIANTS = {"sharp": ("Острый", v_sharp), "glitch": ("Глитч (сейчас)", v_glitch), "outline": ("Контур", v_outline),
+            "pixel": ("Пиксельный", v_pixel), "thread": ("На нити", v_thread)}
+
+
+def square(img):
+    bbox = img.getbbox()
+    side = max(bbox[2] - bbox[0], bbox[3] - bbox[1]) + 30
+    sq = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    sq.alpha_composite(img.crop(bbox), ((side - (bbox[2] - bbox[0])) // 2, (side - (bbox[3] - bbox[1])) // 2))
+    return sq
+
+
+def logo(name):
+    img = VARIANTS[name][1]()
+    return img if name == "pixel" else square(img)
+
+
+def sheet(out_dir):
+    names = list(VARIANTS)
+    tile = 300
+    W, H = tile * len(names), 470
+    sh = Image.new("RGBA", (W, H), (16, 16, 20, 255))
+    d = ImageDraw.Draw(sh)
+    try:
+        font = ImageFont.truetype("segoeuib.ttf", 26)
+    except OSError:
+        font = ImageFont.load_default()
+    for i, n in enumerate(names):
+        x0 = i * tile
+        big = logo(n).resize((220, 220), Image.LANCZOS)
+        sh.alpha_composite(big, (x0 + 40, 30))
+        for j, s in enumerate((32, 16)):          # tray sizes, blown up 3× with hard pixels
+            bg = Image.new("RGBA", (s, s), (32, 32, 36, 255))
+            bg.alpha_composite(logo(n).resize((s, s), Image.LANCZOS))
+            bg = bg.resize((s * 3, s * 3), Image.NEAREST)
+            sh.alpha_composite(bg, (x0 + 50 + j * 120, 270))
+        d.text((x0 + 40, 410), f"{i + 1}. {VARIANTS[n][0]}", fill=(236, 236, 242), font=font)
+    path = os.path.join(out_dir, "logo-variants.png")
+    sh.save(path)
+    return path
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "--sheet":
+        print(sheet(sys.argv[2]))
+        sys.exit()
     os.makedirs(os.path.join(ROOT, "assets"), exist_ok=True)
-    icon = draw()
-    icon.save(os.path.join(ROOT, "assets", "icon.png"))
-    icon.save(os.path.join(ROOT, "assets", "icon.ico"), sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-    print("assets/icon.ico written")
+    name = sys.argv[1] if len(sys.argv) > 1 else VARIANT
+    img = logo(name)
+    resample = Image.NEAREST if name == "pixel" else Image.LANCZOS
+    img.resize((256, 256), resample).save(os.path.join(ROOT, "assets", "icon.png"))
+    # the outline gets a heavier stroke at tray sizes so it doesn't fade to a hairline
+    bold = square(v_outline(stroke=81)) if name == "outline" else img
+    frames = [(bold if s <= 32 else img).resize((s, s), resample) for s in (16, 24, 32, 48, 64, 128, 256)]
+    frames[-1].save(os.path.join(ROOT, "assets", "icon.ico"), sizes=[f.size for f in frames], append_images=frames[:-1])
+    bold.resize((128, 128), resample).save(os.path.join(ROOT, "assets", "logo.png"))   # page header
+    prev = os.environ.get("ICON_PREVIEW_DIR")
+    if prev:
+        for f in frames[:3]:
+            bg = Image.new("RGBA", f.size, (32, 32, 36, 255))
+            bg.alpha_composite(f)
+            bg.resize((f.size[0] * 6, f.size[1] * 6), Image.NEAREST).save(os.path.join(prev, f"tray-{f.size[0]}.png"))
+    print("assets/icon.png + icon.ico written")

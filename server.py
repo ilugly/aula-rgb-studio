@@ -218,6 +218,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
+        elif self.path in ("/logo.png", "/favicon.ico"):
+            name, ctype = ("logo.png", "image/png") if self.path == "/logo.png" else ("icon.ico", "image/x-icon")
+            with open(os.path.join(RES, "assets", name), "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path.startswith("/fonts/") and self.path.endswith(".woff2") and "/.." not in self.path:
             fp = os.path.join(RES, "web", "fonts", os.path.basename(self.path))
             if not os.path.isfile(fp):
