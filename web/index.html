@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AULA RGB Studio</title>
+<style>
+  @font-face { font-family: "Unbounded"; font-weight: 700; font-display: swap; src: url(/fonts/unbounded-cyrillic-700.woff2) format("woff2"); unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+  @font-face { font-family: "Unbounded"; font-weight: 700; font-display: swap; src: url(/fonts/unbounded-latin-700.woff2) format("woff2"); unicode-range: U+0000-00FF, U+2000-206F, U+20AC, U+2122; }
+
+  :root {
+    --bg: #0d0d11; --panel: #15151b; --panel-2: #1c1c24; --well: #09090c; --line: #262630; --line-2: #383845;
+    --text: #ececf2; --text-2: #a6a6b5; --text-3: #7a7a8e;
+    --live: #dc168f; --ok: #4fd69a; --err: #ff6b81;
+    --display: "Unbounded", "Segoe UI", system-ui, sans-serif;
+    --ui: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scrollbar-color: var(--line-2) var(--bg); }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--ui); min-height: 100vh; }
+  ::selection { background: var(--live); color: #fff; }
+  :focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 8px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .45; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 24px 64px; }
+
+  /* ---------- top bar ---------- */
+  .top { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding-bottom: 16px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
+  .brand { font: 700 15px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; }
+  .brand span { color: var(--text-3); }
+  nav.tabs { display: flex; gap: 2px; }
+  .tab { background: none; border: 0; padding: 8px 12px; border-radius: 8px; color: var(--text-2); font-weight: 600; font-size: 14px; }
+  .tab:hover { color: var(--text); background: var(--panel); }
+  .tab[aria-selected="true"] { color: var(--text); background: var(--panel-2); }
+  .spacer { flex: 1; }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13.5px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex: none; }
+  .dot.on { background: var(--ok); }
+  .dot.bad { background: var(--err); }
+  .dot.live { background: var(--live); box-shadow: 0 0 0 3px rgba(220, 22, 143, .25); }
+  .power { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 14px; font-weight: 600; font-size: 14px;
+           background: var(--panel-2); transition: background .2s, border-color .2s; }
+  .power svg { width: 16px; height: 16px; }
+  .power:hover:not(:disabled) { border-color: var(--text-3); }
+  .power[aria-pressed="true"] { background: var(--live); border-color: var(--live); color: #fff; }
+
+  h2 { font: 700 12px/1 var(--display); letter-spacing: .03em; color: var(--text); margin: 0 0 14px; display: flex; align-items: baseline; gap: 10px; }
+  h2 small { font: 400 13px/1.3 var(--ui); letter-spacing: 0; color: var(--text-3); }
+  .sec + .sec { margin-top: 30px; }
+  .note { color: var(--text-3); font-size: 13px; margin: 10px 0 0; }
+
+  /* ---------- live layout ---------- */
+  .live { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 40px; align-items: start; }
+  @media (max-width: 1020px) { .live { grid-template-columns: 1fr; } }
+
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 30px 30px 20px; }
+  /* the F75 case: black fading to grey, keys are dark caps with the LEDs shining through */
+  .kbbody { border-radius: 12px; padding: 1.6% 1.4%; background: linear-gradient(170deg, #0a0a0c 0%, #17171a 55%, #3c3c42 100%);
+            box-shadow: 0 22px 40px -24px var(--spill, rgba(0, 0, 0, .8)); transition: box-shadow .6s var(--ease); }
+  .kb { position: relative; aspect-ratio: 612 / 245; container-type: inline-size; }
+  .key { position: absolute; border-radius: .7cqw; background: #18181c; display: flex; align-items: flex-start; padding: .45cqw .7cqw;
+         font-size: 1.3cqw; line-height: 1; color: rgba(255, 255, 255, .5); user-select: none;
+         box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05); }
+  .knob { position: absolute; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #4a4a50, #151517 72%); }
+  @media (max-width: 640px) { .key { font-size: 0; } .stage { padding: 16px 12px 12px; } }
+
+  .playing { display: flex; align-items: center; gap: 14px; margin-top: 18px; min-height: 36px; }
+  .playing .strip { width: 36px; height: 36px; border-radius: 9px; flex: none; }
+  .playing .what { font-weight: 650; }
+  .playing .sub { font-size: 13px; color: var(--text-3); }
+  .onair { margin-left: auto; font-size: 12.5px; font-weight: 600; padding: 5px 10px; border-radius: 99px; background: var(--live); color: #fff; white-space: nowrap; }
+  .onair.off { background: var(--panel-2); color: var(--text-2); }
+
+  /* ---------- preview cards ---------- */
+  .scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 8px 11px; text-align: left; display: flex; flex-direction: column; gap: 2px;
+          transition: border-color .18s, background .18s, transform .18s var(--ease); position: relative; }
+  .card:hover { border-color: var(--line-2); background: var(--panel-2); transform: translateY(-1px); }
+  .card[aria-pressed="true"] { border-color: rgba(255, 255, 255, .7); background: var(--panel-2); }
+  .card canvas { display: block; width: 100%; aspect-ratio: 612 / 245; border-radius: 9px; background: var(--well); margin-bottom: 8px; }
+  .card .nm { font-weight: 650; font-size: 14px; line-height: 1.3; padding: 0 4px; }
+  .card .sub { font-size: 12px; color: var(--text-3); padding: 0 4px; }
+  .card .playdot { position: absolute; top: 14px; right: 14px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--live); color: #fff; }
+
+  .fxgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .fxgrid .card { padding: 6px 6px 9px; border-radius: 12px; }
+  .fxgrid .card canvas { margin-bottom: 6px; border-radius: 7px; }
+  .fxgrid .card .nm { font-size: 13px; }
+  .fxgrid .card .sub { font-size: 11.5px; }
+
+  .themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .theme { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 6px;
+           font-size: 11.5px; line-height: 1.2; color: var(--text-2); text-align: left; transition: border-color .18s; }
+  .theme:hover { border-color: var(--line-2); }
+  .theme i { display: block; height: 18px; border-radius: 5px; }
+  .theme[aria-pressed="true"] { border-color: rgba(255, 255, 255, .7); color: var(--text); }
+
+  .dots { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  .cdot { position: relative; width: 34px; height: 34px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .25); cursor: pointer; overflow: hidden; }
+  .cdot input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .round { width: 30px; height: 30px; border-radius: 50%; border: 1px dashed var(--line-2); background: none; color: var(--text-2); display: grid; place-items: center; }
+  .round:hover:not(:disabled) { border-style: solid; color: var(--text); }
+  .round svg { width: 14px; height: 14px; }
+
+  .knobrow { margin-top: 16px; }
+  .knobrow .lab { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; color: var(--text-2); font-size: 13.5px; }
+  .knobrow .num { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; background: none; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 99px; background: linear-gradient(90deg, var(--text) var(--p, 50%), var(--line-2) var(--p, 50%)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; margin-top: -6px; box-shadow: 0 1px 4px rgba(0, 0, 0, .6); }
+  input[type=range]::-moz-range-track { height: 6px; border-radius: 99px; background: var(--line-2); }
+  input[type=range]::-moz-range-progress { height: 6px; border-radius: 99px; background: var(--text); }
+  input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: #fff; }
+
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; color: var(--text-2); font-size: 13.5px; cursor: pointer; }
+  .switch input { -webkit-appearance: none; appearance: none; width: 38px; height: 22px; border-radius: 99px; background: var(--line-2); position: relative; cursor: pointer; flex: none; transition: background .2s; margin: 0; }
+  .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease); }
+  .switch input:checked { background: var(--ok); }
+  .switch input:checked::after { transform: translateX(16px); }
+  .switch input:disabled { opacity: .45; cursor: default; }
+
+  /* ---------- buttons ---------- */
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 10px; padding: 8px 14px; font-weight: 600; font-size: 14px;
+         background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2); transition: border-color .18s, background .18s; }
+  .btn:hover:not(:disabled) { border-color: var(--text-3); }
+  .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn.hot { background: var(--live); color: #fff; border-color: var(--live); }
+  .btn svg { width: 16px; height: 16px; flex: none; }
+  .btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+  .offline { display: none; margin-bottom: 26px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 22px; }
+  .offline.show { display: block; }
+  .offline h3 { margin: 0 0 6px; font-size: 16px; }
+  .offline ol { margin: 0; padding-left: 20px; color: var(--text-2); }
+  .offline ol b { color: var(--text); }
+
+  /* ---------- memory ---------- */
+  .page { display: none; } .page.on { display: block; }
+  .memhead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .memhead .now { font-size: 18px; font-weight: 650; }
+  .memgrid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 40px; align-items: start; margin-top: 24px; }
+  @media (max-width: 1020px) { .memgrid { grid-template-columns: 1fr; } }
+  .fwlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 12px; }
+  .fw { padding: 12px 13px; gap: 3px; }
+  .fw .nm { padding: 0; }
+  .fw .ds { font-size: 12.5px; color: var(--text-3); min-height: 34px; line-height: 1.35; }
+  .fw .meta { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+  .fw .sw { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .fw .sw span { flex: 1; }
+  .fw .badge { position: absolute; top: 10px; right: 10px; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px; background: rgba(79, 214, 154, .16); color: var(--ok); }
+  .editor { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .editor h3 { margin: 0; font-size: 18px; }
+  .editor .ds { color: var(--text-2); margin: 4px 0 0; }
+  .editor .part { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .slots { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+  .slot { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-3); }
+  .slot input[type=radio] { accent-color: var(--ok); width: 15px; height: 15px; margin: 0; cursor: pointer; }
+  .mini { background: var(--well); border-radius: 10px; padding: 10px; }
+  .mini .key { font-size: 0; }
+  .mini .knob { display: none; }
+  .empty { color: var(--text-3); text-align: center; padding: 24px 10px; }
+  select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 9px; padding: 7px 10px; font: inherit; }
+
+  /* ---------- settings ---------- */
+  .diag { max-width: 860px; }
+  .row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px 0; border-top: 1px solid var(--line); }
+  .row:first-of-type { border-top: 0; }
+  .row .t { flex: 1; min-width: 220px; }
+  .row .t b { display: block; font-weight: 600; }
+  .row .t span { color: var(--text-3); font-size: 13px; }
+  .log { font: 12px/1.5 Consolas, ui-monospace, monospace; background: var(--well); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; height: 320px; overflow: auto; white-space: pre-wrap; color: #c3c3cf; margin-top: 12px; }
+
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 12px); opacity: 0; pointer-events: none; background: var(--panel-2); border: 1px solid var(--line-2);
+           padding: 10px 16px; border-radius: 10px; box-shadow: 0 12px 30px rgba(0, 0, 0, .5); transition: opacity .2s, transform .25s var(--ease); max-width: min(560px, 92vw); z-index: 10; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.err { border-color: var(--err); color: #ffd3da; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V9"/><path d="m7 14 5-5 5 5"/><path d="M5 4h14"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">AULA RGB <span>Studio</span></div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-page="live">Анимации</button>
+      <button class="tab" role="tab" aria-selected="false" data-page="mem">Память клавиатуры</button>
+      <button class="tab" role="tab" aria-selected="false" data-page="diag">Настройки</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="status"><span id="dot" class="dot"></span><span id="statusText">Подключаюсь…</span></div>
+    <button id="liveBtn" class="power" aria-pressed="false" disabled><svg><use href="#i-power"/></svg><span>Включить</span></button>
+  </header>
+
+  <div class="offline" id="howto">
+    <h3>Программа не запущена</h3>
+    <ol>
+      <li>Вставь 2.4G-донгл, а переключатель на задней стороне клавиатуры поставь на <b>2.4G</b>.</li>
+      <li>Запусти <b>AULA RGB Studio</b> — у часов появится иконка, а эта страница откроется сама.</li>
+      <li>Если клавиатура молчит, значит уснула: <b>нажми любую клавишу</b>.</li>
+    </ol>
+    <div class="btnrow"><button class="btn" id="connectBtn"><svg><use href="#i-refresh"/></svg>Проверить ещё раз</button></div>
+  </div>
+
+  <!-- ===== Animations ===== -->
+  <section class="page on" id="page-live">
+    <div class="live">
+      <div>
+        <div class="stage">
+          <div class="kbbody" id="kbBody"><div id="kbLive" class="kb"></div></div>
+          <div class="playing">
+            <span class="strip" id="nowStrip"></span>
+            <div><div class="what" id="nowWhat">—</div><div class="sub" id="nowSub"></div></div>
+            <span class="onair off" id="onAir">не запущено</span>
+          </div>
+        </div>
+
+        <div class="sec" style="margin-top:34px">
+          <h2>СЦЕНЫ <small>Нажми — и она сразу появится на клавиатуре</small></h2>
+          <div class="scenes" id="scenes"></div>
+        </div>
+      </div>
+
+      <aside>
+        <div class="sec">
+          <h2>ЭФФЕКТ</h2>
+          <div class="fxgrid" id="fxChips"></div>
+        </div>
+        <div class="sec">
+          <h2>ЦВЕТА</h2>
+          <div class="themes" id="themeChips"></div>
+          <div class="dots" id="colors"></div>
+          <p class="note">Нажми на кружок, чтобы поменять цвет. Можно от 2 до 6 цветов.</p>
+        </div>
+        <div class="sec">
+          <h2>НАСТРОЙКА</h2>
+          <div class="knobrow" style="margin-top:0"><div class="lab"><span>Скорость</span><span class="num" id="speedV"></span></div><input id="speed" type="range" min="0" max="100" value="35"></div>
+          <div class="knobrow"><div class="lab"><span>Размер узора</span><span class="num" id="scaleV"></span></div><input id="scale" type="range" min="30" max="250" value="100"></div>
+          <div class="knobrow"><div class="lab"><span>Яркость</span><span class="num" id="brightV"></span></div><input id="bright" type="range" min="5" max="100" value="100"></div>
+          <div class="knobrow" id="densityRow"><div class="lab"><span>Сколько всего летает</span><span class="num" id="densityV"></span></div><input id="density" type="range" min="0" max="100" value="50"></div>
+          <label class="switch">В обратную сторону <input type="checkbox" id="reverse"></label>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ===== Keyboard memory ===== -->
+  <section class="page" id="page-mem">
+    <div class="memhead">
+      <div><div class="now" id="memNow">Что записано в клавиатуре</div><div class="note" id="memInfo" style="margin:2px 0 0">Подключись, и настройки прочитаются сами.</div></div>
+      <div class="spacer"></div>
+      <div class="btnrow" style="margin:0">
+        <button class="btn" id="reloadMem" disabled><svg><use href="#i-refresh"/></svg>Прочитать заново</button>
+        <button class="btn" id="backupBtn" disabled><svg><use href="#i-down"/></svg>Скачать копию</button>
+        <button class="btn" id="restoreBtn" disabled><svg><use href="#i-up"/></svg>Восстановить</button>
+      </div>
+      <input type="file" id="restoreFile" accept=".json" hidden>
+    </div>
+    <p class="note">Эти режимы живут в самой клавиатуре и работают без компьютера. Перед первой записью копия всех настроек сохраняется сама. <span id="autoBackupInfo"></span></p>
+
+    <div class="memgrid">
+      <div class="fwlist" id="fxList"><div class="empty">Пока ничего не прочитано</div></div>
+      <div class="editor" id="editor">
+        <div class="empty" id="edEmpty">Выбери режим слева, чтобы поменять его цвет, яркость или скорость.</div>
+        <div id="edBody" hidden>
+          <h3 id="edName"></h3>
+          <p class="ds" id="edDesc"></p>
+
+          <div class="part" id="edColorBlock">
+            <h2>ЦВЕТ <small>отметь, каким светить</small></h2>
+            <div class="slots" id="edSlots"></div>
+            <div class="btnrow">
+              <button class="btn" id="edPink">Взять мои цвета</button>
+              <button class="btn" id="edFactoryPal">Заводские цвета</button>
+            </div>
+            <p class="note">«Перелив» — режим сам перебирает эти цвета, если так умеет.</p>
+          </div>
+          <div class="part" id="edCustomBlock" hidden>
+            <h2>КАРТИНКА НА КЛАВИШАХ</h2>
+            <div class="mini"><div id="kbCustom" class="kb"></div></div>
+            <div class="btnrow"><button class="btn" id="edWritePattern">Записать сюда то, что сейчас на анимации</button></div>
+            <p class="note">Запишется неподвижная картинка — как кадр из текущей анимации.</p>
+          </div>
+          <div class="part">
+            <div class="knobrow" id="edBrightBlock" style="margin-top:0"><div class="lab"><span>Яркость</span><span class="num" id="edBrightV"></span></div><input id="edBright" type="range" min="0" max="9"></div>
+            <div class="knobrow" id="edSpeedBlock"><div class="lab"><span>Скорость</span><span class="num" id="edSpeedV"></span></div><input id="edSpeed" type="range" min="0" max="4"></div>
+            <div class="btnrow">
+              <button class="btn primary" id="edApply">Записать и включить</button>
+              <button class="btn" id="edSaveOnly">Только сохранить</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Settings ===== -->
+  <section class="page diag" id="page-diag">
+    <div class="row">
+      <div class="t"><b>Запускать вместе с Windows</b><span>Программа стартует сама, без окон, и сразу включает последнюю анимацию.</span></div>
+      <label class="switch" style="margin:0"><input type="checkbox" id="autostart" disabled></label>
+    </div>
+    <div class="row">
+      <div class="t"><b>Сон клавиатуры</b><span>Через сколько минут без нажатий гаснет подсветка.</span></div>
+      <select id="sleepSel" disabled>
+        <option value="0">никогда</option><option value="60">1 мин</option><option value="120">2 мин</option><option value="180">3 мин</option>
+        <option value="300">5 мин</option><option value="600">10 мин</option><option value="900">15 мин</option><option value="1200">20 мин</option>
+      </select>
+      <button class="btn" id="sleepSave" disabled>Сохранить</button>
+    </div>
+    <div class="row">
+      <div class="t"><b>Проверка связи</b><span>Вся клавиатура станет розовой на пару секунд.</span></div>
+      <button class="btn hot" id="solidTest" disabled>Проверить</button>
+    </div>
+    <div class="row">
+      <div class="t"><b>Заводские цвета для всех режимов</b><span>Если поэкспериментировал с цветами в памяти и хочешь всё вернуть.</span></div>
+      <button class="btn" id="resetAllPal" disabled>Вернуть</button>
+    </div>
+    <div class="row">
+      <div class="t"><b>Выключить программу</b><span>Анимация остановится, клавиатура вернётся к своему режиму.</span></div>
+      <button class="btn" id="quitBtn" disabled><svg><use href="#i-power"/></svg>Выключить</button>
+    </div>
+    <div class="row" style="display:block">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div class="t"><b>Журнал</b><span id="liveInfo">Пригодится, если что-то пошло не так — его можно скопировать и отправить.</span></div>
+        <label class="switch" style="margin:0">все подробности <input type="checkbox" id="verbose"></label>
+        <button class="btn" id="copyLog">Скопировать</button>
+      </div>
+      <div id="log" class="log"></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let connected = false, live = false;
+
+// ---------- F75 key layout: [led index, label, x1, y1, x2, y2] from the official KB.ini ----------
+const F75 = [[0,"Esc",30,30,55,57],[12,"F1",107,30,132,57],[18,"F2",144,30,169,57],[24,"F3",183,30,208,57],[30,"F4",222,30,247,57],[36,"F5",269,30,294,57],[42,"F6",305,30,330,57],[48,"F7",343,30,368,57],[54,"F8",388,30,413,57],[60,"F9",439,30,464,57],[66,"F10",477,30,502,57],[72,"F11",516,30,541,57],[78,"F12",555,30,580,57],[88,"End",605,195,630,222],[1,"`",31,81,56,108],[7,"1",70,81,95,108],[13,"2",108,81,133,108],[19,"3",147,81,172,108],[25,"4",184,81,209,108],[31,"5",223,81,248,108],[37,"6",262,81,287,108],[43,"7",300,80,325,107],[49,"8",338,81,363,108],[55,"9",377,81,402,108],[61,"0",416,81,441,108],[67,"-",453,81,478,108],[73,"=",491,81,516,108],[79,"Bksp",531,81,591,108],[85,"Del",604,81,629,108],[2,"Tab",34,120,78,147],[8,"Q",89,119,114,146],[14,"W",127,119,152,146],[20,"E",165,119,190,146],[26,"R",204,119,229,146],[32,"T",242,119,267,146],[38,"Y",280,119,305,146],[44,"U",318,119,343,146],[50,"I",356,119,381,146],[56,"O",395,119,420,146],[62,"P",433,119,458,146],[68,"[",471,120,496,147],[74,"]",509,119,534,146],[80,"\\",549,119,593,146],[86,"PgUp",605,120,630,147],[3,"Caps",33,158,85,185],[9,"A",98,158,123,185],[15,"S",136,158,161,185],[21,"D",174,158,199,185],[27,"F",213,158,238,185],[33,"G",252,158,277,185],[39,"H",290,158,315,185],[45,"J",327,158,352,185],[51,"K",366,158,391,185],[57,"L",405,158,430,185],[63,";",443,158,468,185],[69,"'",481,158,506,185],[81,"Enter",521,158,591,185],[4,"Shift",33,195,105,222],[10,"Z",116,195,141,222],[16,"X",155,195,180,222],[22,"C",193,195,218,222],[28,"V",232,195,257,222],[34,"B",270,196,295,223],[40,"N",309,195,334,222],[46,"M",347,195,372,222],[52,",",384,195,409,222],[58,".",424,195,449,222],[64,"/",463,195,488,222],[70,"Shift",502,195,558,222],[82,"↑",567,195,592,222],[5,"Ctrl",34,234,69,261],[11,"Win",79,234,114,261],[17,"Alt",122,235,157,262],[35,"Space",174,235,400,262],[59,"Fn",463,236,497,263],[53,"Alt",414,235,449,262],[77,"←",529,234,554,261],[83,"↓",568,234,593,261],[89,"→",605,234,630,261],[87,"PgDn",604,159,629,186]];
+// KB.ini only marks the middle of each key; grow every box to the real key pitch (~38.6 units per 1u)
+const GROW_X = 4.4, GROW_Y = 4.6;
+const KEYS = F75.map(([led, label, x1, y1, x2, y2]) => ({ led, label, x1: x1 - GROW_X, y1: y1 - GROW_Y, x2: x2 + GROW_X, y2: y2 + GROW_Y }));
+const BX = 24, BY = 24, BW = 612, BH = 245;
+
+function buildBoard(el) {
+  const pct = (v, o, s) => ((v - o) / s * 100) + "%";
+  const map = new Map();
+  for (const k of KEYS) {
+    const d = document.createElement("div");
+    d.className = "key"; d.textContent = k.label;
+    Object.assign(d.style, { left: pct(k.x1, BX, BW), top: pct(k.y1, BY, BH), width: pct(k.x2, k.x1, BW), height: pct(k.y2, k.y1, BH) });
+    el.appendChild(d); map.set(k.led, d);
+  }
+  const kn = document.createElement("div"); kn.className = "knob";
+  Object.assign(kn.style, { left: pct(602, BX, BW), top: pct(26, BY, BH), width: pct(634, 602, BW), height: pct(58, 26, BH) });
+  el.appendChild(kn);
+  return map;
+}
+// A lit key: the cap stays dark, the LED tints it from below, glows around its edge and lights the legend.
+function paintBoard(map, colorOf) {
+  for (const [led, d] of map) {
+    const c = colorOf(led);
+    const lum = c ? Math.max(...c) / 255 : 0;
+    if (lum < .03) { d.style.background = ""; d.style.boxShadow = ""; d.style.color = ""; continue; }
+    const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+    d.style.background = `rgb(${mix([24, 24, 28], c, .72)})`;
+    d.style.color = `rgba(255,255,255,${(.55 + .35 * lum).toFixed(2)})`;
+    d.style.boxShadow = `inset 0 1px 0 rgba(255,255,255,.06), 0 0 1.6cqw rgba(${c},${(.5 * lum).toFixed(2)})`;
+  }
+}
+const liveBoard = buildBoard($("kbLive"));
+const customBoard = buildBoard($("kbCustom"));
+
+// ---------- helpers ----------
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t));
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.id === "page-" + t.dataset.page));
+});
+let toastTimer;
+function toast(msg, err) {
+  const t = $("toast"); t.textContent = msg; t.className = "toast show" + (err ? " err" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "toast" + (err ? " err" : ""), err ? 6000 : 3200);
+}
+const logEl = $("log");
+function log(msg) {
+  logEl.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+  if (logEl.textContent.length > 80000) logEl.textContent = logEl.textContent.slice(-50000);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+$("copyLog").onclick = () => navigator.clipboard.writeText(logEl.textContent).then(() => toast("Журнал скопирован"));
+const toHex = a => Array.from(a, b => b.toString(16).padStart(2, "0")).join("");
+const fromHex = s => Uint8Array.from(s.match(/../g) || [], h => parseInt(h, 16));
+const hexToRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const rgbToHex = c => "#" + c.map(v => Math.round(v).toString(16).padStart(2, "0")).join("");
+function setStatus(text, state) { $("statusText").textContent = text; $("dot").className = "dot " + (state || ""); }
+function fillRange(el) { el.style.setProperty("--p", ((el.value - el.min) / (el.max - el.min) * 100) + "%"); }
+
+// ---------- Animation catalog (the animation itself runs in server.py / effects.py) ----------
+// [id, name, short description, uses the "how much" slider]
+const EFFECTS = [
+  ["wave", "Волна", "бежит слева направо"], ["center", "Из центра", "расходится в стороны"], ["diag", "Диагональ", "наискосок"],
+  ["rings", "Круги", "как на воде"], ["swirl", "Вихрь", "крутится по кругу"], ["breathe", "Дыхание", "плавно дышит"],
+  ["aurora", "Северное сияние", "мягкие волны"], ["plasma", "Плазма", "переливы"], ["lava", "Лавовая лампа", "плывущие пятна"],
+  ["heartbeat", "Сердцебиение", "двойной удар"], ["scanner", "Сканер", "полоса туда-обратно"], ["stars", "Звёзды", "мерцают", true],
+  ["confetti", "Конфетти", "вспышки", true], ["rain", "Дождь", "капли сверху", true], ["meteors", "Метеоры", "летят с хвостами", true],
+  ["fire", "Огонь", "пламя снизу"], ["splash", "Всплески", "от нажатых клавиш"], ["trails", "Следы набора", "клавиши тлеют"],
+  ["static", "Градиент", "без движения"],
+];
+const THEMES = {
+  pinkpurple: ["Розово-фиолетовый", ["#ff4fd8", "#b14dff", "#6a3dff"]],
+  sakura:     ["Сакура",            ["#ffc2e2", "#ff7eb9", "#ff3d8b", "#e0218a"]],
+  cyberpunk:  ["Киберпанк",         ["#ff2a6d", "#d300c5", "#7b2ff7", "#05d9e8"]],
+  vaporwave:  ["Вейпорвейв",        ["#ff71ce", "#01cdfe", "#05ffa1", "#b967ff"]],
+  aurora:     ["Сияние",            ["#00ff9d", "#00e1ff", "#4d5bff", "#b300ff"]],
+  ocean:      ["Океан",             ["#00e5ff", "#0091ff", "#2b3cff", "#00ffc8"]],
+  sunset:     ["Закат",             ["#ff2e63", "#ff6a3d", "#ffb347", "#c13584"]],
+  galaxy:     ["Галактика",         ["#ffffff", "#9d7bff", "#ff4fd8", "#3d5afe"]],
+  ice:        ["Лёд",               ["#ffffff", "#a8e6ff", "#3fa9ff", "#6a5cff"]],
+  mint:       ["Мята",              ["#00ffa3", "#00d4ff", "#a6ff00"]],
+  fire:       ["Пламя",             ["#3a0000", "#c81000", "#ff5a00", "#ffb300", "#fff1a0"]],
+  lava:       ["Лава",              ["#ff0000", "#ff3c00", "#ff7b00", "#ffb700"]],
+  gold:       ["Золото",            ["#ffd700", "#ff9f00", "#fff3b0"]],
+  candy:      ["Конфеты",           ["#ff4fd8", "#ffe14f", "#4fd8ff", "#8cff4f", "#b14dff"]],
+  blood:      ["Рубин",             ["#ff0033", "#8b0000", "#ff4d6d"]],
+  rainbow:    ["Радуга",            ["#ff0000", "#ffa500", "#ffff00", "#00ff00", "#00bfff", "#8a2be2"]],
+};
+const SCENES = [
+  ["Розово-фиолетовая волна", "wave", "pinkpurple", { speed: 35, scale: 100 }],
+  ["Северное сияние",         "aurora", "aurora", { speed: 25, scale: 110 }],
+  ["Сакура под дождём",       "rain", "sakura", { speed: 30, density: 55 }],
+  ["Неоновый город",          "plasma", "cyberpunk", { speed: 35, scale: 90 }],
+  ["Звёздная ночь",           "stars", "galaxy", { speed: 30, density: 60 }],
+  ["Лавовая лампа",           "lava", "lava", { speed: 30, scale: 110 }],
+  ["Вейпорвейв-вихрь",        "swirl", "vaporwave", { speed: 30, scale: 110 }],
+  ["Метеоритный дождь",       "meteors", "ice", { speed: 45, density: 55 }],
+  ["Костёр",                  "fire", "fire", { speed: 40, scale: 100 }],
+  ["Закат",                   "breathe", "sunset", { speed: 20, scale: 120 }],
+  ["Сердцебиение",            "heartbeat", "pinkpurple", { speed: 35, scale: 100 }],
+  ["Киберсканер",             "scanner", "cyberpunk", { speed: 40, scale: 100 }],
+  ["Океанский прибой",        "center", "ocean", { speed: 25, scale: 140 }],
+  ["Конфетти",                "confetti", "candy", { speed: 40, density: 60 }],
+  ["Круги на воде",           "rings", "mint", { speed: 30, scale: 100 }],
+  ["Всплески от нажатий",     "splash", "pinkpurple", { speed: 40, scale: 100 }],
+];
+let fx = "wave", theme = "pinkpurple", palette = [...THEMES.pinkpurple[1]];
+const grad = (p, deg = 90) => `linear-gradient(${deg}deg,${p.join(",")})`;
+const effName = id => EFFECTS.find(e => e[0] === id)[1];
+
+// card id → what its preview plays (the program runs every preview for real)
+const thumbSpec = new Map();
+function previewCard(id, spec, inner) {
+  const b = document.createElement("button");
+  b.className = "card";
+  b.dataset.thumb = id;
+  b.innerHTML = `<canvas></canvas>${inner}`;
+  thumbSpec.set(id, spec);
+  return b;
+}
+// ---------- Card pictures: one small drawn illustration per effect, in the card's colors ----------
+// Drawn once (and again on resize); nothing here animates.
+function seeded(str) {
+  let h = 2166136261;
+  for (const ch of str) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return () => { h += 0x6D2B79F5; let t = h; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function linPal(pal, t) {
+  const cols = pal.map(hexToRgb), f = Math.min(.999, Math.max(0, t)) * (cols.length - 1), i = Math.floor(f), u = f - i;
+  return cols[i].map((v, c) => v + (cols[i + 1][c] - v) * u);
+}
+const rgba = (c, a = 1) => `rgba(${c.map(Math.round)},${a})`;
+
+const ART = {
+  wave(g, W, H, pal) {
+    for (let k = 0; k < 4; k++) {
+      const gr = g.createLinearGradient(0, 0, W, 0);
+      pal.forEach((h, i) => gr.addColorStop(i / Math.max(1, pal.length - 1), h));
+      g.strokeStyle = gr; g.globalAlpha = .95 - k * .2; g.lineWidth = H * (.1 - k * .015); g.lineCap = "round";
+      g.shadowColor = pal[k % pal.length]; g.shadowBlur = H * .25;
+      g.beginPath();
+      for (let x = -10; x <= W + 10; x += 4) g.lineTo(x, H * (.32 + k * .14) + Math.sin(x / W * Math.PI * 2.2 + k * .9) * H * .11);
+      g.stroke();
+    }
+  },
+  center(g, W, H, pal) {
+    const gr = g.createLinearGradient(0, 0, W, 0), n = pal.length;
+    [...pal].reverse().concat(pal.slice(1)).forEach((h, i, a) => gr.addColorStop(i / (a.length - 1), h));
+    g.fillStyle = gr; g.globalAlpha = .9; g.fillRect(0, 0, W, H);
+    g.globalAlpha = 1;
+    for (let i = 1; i < 6; i++) { g.fillStyle = "rgba(9,9,12,.22)"; g.fillRect(W / 2 - i * W * .09 - W * .006, 0, W * .012, H); g.fillRect(W / 2 + i * W * .09 - W * .006, 0, W * .012, H); }
+    const v = g.createLinearGradient(0, 0, 0, H); v.addColorStop(0, "rgba(9,9,12,.55)"); v.addColorStop(.5, "rgba(9,9,12,0)"); v.addColorStop(1, "rgba(9,9,12,.55)");
+    g.fillStyle = v; g.fillRect(0, 0, W, H);
+  },
+  diag(g, W, H, pal) {
+    const gr = g.createLinearGradient(0, 0, W, H * 1.4);
+    pal.concat(pal).forEach((h, i, a) => gr.addColorStop(i / (a.length - 1), h));
+    g.fillStyle = gr; g.globalAlpha = .9; g.fillRect(0, 0, W, H);
+    g.globalAlpha = .3; g.strokeStyle = "#09090c"; g.lineWidth = W * .012;
+    for (let x = -H; x < W + H; x += W * .07) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + H * 1.1, H); g.stroke(); }
+  },
+  rings(g, W, H, pal) {
+    const cx = W / 2, cy = H / 2;
+    for (let i = 7; i >= 1; i--) {
+      g.strokeStyle = rgba(samplePalette(i / 7, pal), 1 - i * .09); g.lineWidth = H * .045;
+      g.shadowColor = g.strokeStyle; g.shadowBlur = H * .15;
+      g.beginPath(); g.ellipse(cx, cy, i * W * .075, i * H * .14, 0, 0, Math.PI * 2); g.stroke();
+    }
+  },
+  swirl(g, W, H, pal) {
+    const cx = W / 2, cy = H / 2;
+    for (let arm = 0; arm < 3; arm++) {
+      g.strokeStyle = rgba(samplePalette(arm / 3, pal)); g.lineWidth = H * .07; g.lineCap = "round";
+      g.shadowColor = g.strokeStyle; g.shadowBlur = H * .2;
+      g.beginPath();
+      for (let t = 0; t < Math.PI * 3.2; t += .05) {
+        const r = t / (Math.PI * 3.2), a = t + arm * Math.PI * 2 / 3;
+        g.lineTo(cx + Math.cos(a) * r * W * .46, cy + Math.sin(a) * r * H * .62);
+      }
+      g.stroke();
+    }
+  },
+  breathe(g, W, H, pal) {
+    for (const [r, t, a] of [[.75, .0, .55], [.45, .4, .8], [.22, .7, 1]]) {
+      const gr = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * r);
+      gr.addColorStop(0, rgba(samplePalette(t, pal), a)); gr.addColorStop(1, rgba(samplePalette(t, pal), 0));
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    }
+  },
+  aurora(g, W, H, pal, R) {
+    stars(g, W, H, R, 26, .5);
+    g.globalCompositeOperation = "lighter";
+    for (let k = 0; k < 3; k++) {
+      const c = samplePalette(k / 3, pal), base = H * (.28 + k * .12), amp = H * (.12 - k * .02), ph = R() * 6;
+      for (let x = 0; x < W; x += 2) {
+        const y = base + Math.sin(x / W * 5 + ph) * amp + Math.sin(x / W * 11 + ph * 2) * amp * .3;
+        const gr = g.createLinearGradient(0, y, 0, y + H * .55);
+        gr.addColorStop(0, rgba(c, .5)); gr.addColorStop(1, rgba(c, 0));
+        g.fillStyle = gr; g.fillRect(x, y, 2, H * .55);
+      }
+    }
+  },
+  plasma(g, W, H, pal, R) {
+    g.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 7; i++) {
+      const x = R() * W, y = R() * H, r = W * (.22 + R() * .2), c = samplePalette(i / 7, pal);
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, rgba(c, .85)); gr.addColorStop(1, rgba(c, 0));
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    }
+  },
+  lava(g, W, H, pal, R) {
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, rgba(samplePalette(.0, pal), .08)); bg.addColorStop(1, rgba(samplePalette(.3, pal), .3));
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const blobs = [[.22, .7, .17], [.45, .35, .13], [.66, .62, .2], [.85, .3, .1], [.55, .9, .12]];
+    blobs.forEach(([x, y, r], i) => {
+      const c = samplePalette(i / blobs.length, pal), gr = g.createRadialGradient(x * W - r * W * .3, y * H - r * W * .3, 0, x * W, y * H, r * W);
+      gr.addColorStop(0, rgba(c.map(v => v + (255 - v) * .35))); gr.addColorStop(.7, rgba(c)); gr.addColorStop(1, rgba(c, 0));
+      g.fillStyle = gr; g.shadowColor = rgba(c); g.shadowBlur = H * .2;
+      g.beginPath(); g.ellipse(x * W, y * H, r * W, r * W * .85, 0, 0, Math.PI * 2); g.fill();
+    });
+  },
+  heartbeat(g, W, H, pal) {
+    g.strokeStyle = "rgba(255,255,255,.05)"; g.lineWidth = 1;
+    for (let x = 0; x < W; x += W / 16) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    const c = samplePalette(0, pal), pts = [[0, .6], [.18, .6], [.24, .45], [.28, .78], [.33, .08], [.38, .92], [.43, .6], [.55, .6], [.6, .5], [.64, .72], [.68, .22], [.72, .85], [.76, .6], [1, .6]];
+    g.strokeStyle = rgba(c); g.lineWidth = H * .045; g.lineJoin = "round"; g.lineCap = "round";
+    g.shadowColor = rgba(c); g.shadowBlur = H * .3;
+    g.beginPath(); pts.forEach(([x, y]) => g.lineTo(x * W, y * H)); g.stroke();
+    g.shadowBlur = 0; g.strokeStyle = "rgba(255,255,255,.75)"; g.lineWidth = H * .012; g.stroke();
+  },
+  scanner(g, W, H, pal) {
+    const x = W * .64, c = samplePalette(.15, pal);
+    const trail = g.createLinearGradient(x - W * .55, 0, x, 0); trail.addColorStop(0, rgba(c, 0)); trail.addColorStop(1, rgba(c, .55));
+    g.fillStyle = trail; g.fillRect(x - W * .55, H * .12, W * .55, H * .76);
+    g.fillStyle = rgba(c.map(v => v + (255 - v) * .5)); g.shadowColor = rgba(c); g.shadowBlur = W * .08;
+    g.fillRect(x - W * .02, H * .08, W * .04, H * .84);
+  },
+  stars(g, W, H, pal, R) {
+    const sky = g.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, rgba(samplePalette(.6, pal), .16)); sky.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    stars(g, W, H, R, 45, .8);
+    for (let i = 0; i < 7; i++) sparkle(g, R() * W, R() * H, H * (.06 + R() * .1), samplePalette(R(), pal));
+  },
+  confetti(g, W, H, pal, R) {
+    for (let i = 0; i < 46; i++) {
+      g.save(); g.translate(R() * W, R() * H); g.rotate(R() * Math.PI);
+      g.fillStyle = rgba(samplePalette(R(), pal)); g.shadowColor = g.fillStyle; g.shadowBlur = H * .05;
+      R() < .5 ? g.fillRect(-W * .016, -H * .025, W * .032, H * .05) : (g.beginPath(), g.arc(0, 0, H * .028, 0, Math.PI * 2), g.fill());
+      g.restore();
+    }
+  },
+  rain(g, W, H, pal, R) {
+    for (let i = 0; i < 34; i++) {
+      const x = R() * W, y = R() * H * 1.1, len = H * (.18 + R() * .3), c = samplePalette(x / W, pal);
+      const gr = g.createLinearGradient(0, y - len, 0, y); gr.addColorStop(0, rgba(c, 0)); gr.addColorStop(1, rgba(c, .95));
+      g.strokeStyle = gr; g.lineWidth = W * .007; g.lineCap = "round";
+      g.beginPath(); g.moveTo(x, y - len); g.lineTo(x, y); g.stroke();
+      g.fillStyle = rgba(c.map(v => v + (255 - v) * .5)); g.beginPath(); g.arc(x, y, W * .006, 0, Math.PI * 2); g.fill();
+    }
+  },
+  meteors(g, W, H, pal, R) {
+    stars(g, W, H, R, 30, .55);
+    for (let i = 0; i < 5; i++) {
+      const hx = W * (.25 + R() * .75), hy = H * (.15 + R() * .8), len = W * (.22 + R() * .2), c = samplePalette(R(), pal);
+      const tx = hx - len, ty = hy - len * .42;
+      const gr = g.createLinearGradient(tx, ty, hx, hy); gr.addColorStop(0, rgba(c, 0)); gr.addColorStop(1, rgba(c, .95));
+      g.strokeStyle = gr; g.lineWidth = H * .035; g.lineCap = "round";
+      g.beginPath(); g.moveTo(tx, ty); g.lineTo(hx, hy); g.stroke();
+      g.fillStyle = "#fff"; g.shadowColor = rgba(c); g.shadowBlur = H * .15;
+      g.beginPath(); g.arc(hx, hy, H * .03, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0;
+    }
+  },
+  fire(g, W, H, pal, R) {
+    g.globalCompositeOperation = "lighter";
+    const n = 11;
+    for (let layer = 0; layer < 3; layer++) {
+      for (let i = 0; i < n; i++) {
+        const cx = (i + .5 + (R() - .5) * .6) / n * W, w = W / n * (1.3 - layer * .25), h = H * (.45 + R() * .4) * (1 - layer * .22);
+        const gr = g.createLinearGradient(0, H, 0, H - h);
+        gr.addColorStop(0, rgba(linPal(pal, .85 - layer * .1), .9)); gr.addColorStop(.55, rgba(linPal(pal, .55 - layer * .1), .6)); gr.addColorStop(1, rgba(linPal(pal, .25), 0));
+        g.fillStyle = gr;
+        g.beginPath(); g.moveTo(cx - w, H);
+        g.bezierCurveTo(cx - w, H - h * .45, cx - w * .15, H - h * .6, cx + (R() - .5) * w * .4, H - h);
+        g.bezierCurveTo(cx + w * .15, H - h * .6, cx + w, H - h * .45, cx + w, H);
+        g.fill();
+      }
+    }
+    for (let i = 0; i < 14; i++) { g.fillStyle = rgba(linPal(pal, .9), .8); g.beginPath(); g.arc(R() * W, H * (.05 + R() * .5), H * .012, 0, Math.PI * 2); g.fill(); }
+  },
+  splash(g, W, H, pal, R) {
+    [[.3, .55], [.7, .4]].forEach(([x, y], k) => {
+      const c = samplePalette(k * .5, pal);
+      for (let i = 1; i <= 4; i++) {
+        g.strokeStyle = rgba(c, 1 - i * .2); g.lineWidth = H * .03; g.shadowColor = rgba(c); g.shadowBlur = H * .12;
+        g.beginPath(); g.ellipse(x * W, y * H, i * W * .06, i * H * .13, 0, 0, Math.PI * 2); g.stroke();
+      }
+      g.fillStyle = "#fff"; g.beginPath(); g.roundRect(x * W - W * .025, y * H - H * .06, W * .05, H * .12, H * .02); g.fill();
+    });
+  },
+  trails(g, W, H, pal) {
+    const pts = 13;
+    for (let i = 0; i < pts; i++) {
+      const t = i / (pts - 1), x = W * (.08 + t * .84), y = H * (.5 + Math.sin(t * Math.PI * 1.6) * .25), c = samplePalette(t * .8, pal);
+      g.fillStyle = rgba(c, .15 + t * .85); g.shadowColor = rgba(c); g.shadowBlur = H * .2 * t;
+      g.beginPath(); g.roundRect(x - W * .028, y - H * .07, W * .056, H * .14, H * .025); g.fill();
+    }
+  },
+  static(g, W, H, pal) {
+    const gr = g.createLinearGradient(0, 0, W, 0);
+    pal.forEach((h, i) => gr.addColorStop(i / Math.max(1, pal.length - 1), h));
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    const v = g.createLinearGradient(0, 0, 0, H); v.addColorStop(0, "rgba(255,255,255,.12)"); v.addColorStop(.4, "rgba(255,255,255,0)"); v.addColorStop(1, "rgba(9,9,12,.4)");
+    g.fillStyle = v; g.fillRect(0, 0, W, H);
+  },
+};
+function stars(g, W, H, R, n, a) {
+  for (let i = 0; i < n; i++) { g.fillStyle = `rgba(255,255,255,${(a * (.3 + R() * .7)).toFixed(2)})`; g.beginPath(); g.arc(R() * W, R() * H, Math.max(.6, W * .0035 * R()), 0, Math.PI * 2); g.fill(); }
+}
+function sparkle(g, x, y, r, c) {
+  g.save(); g.fillStyle = rgba(c.map(v => v + (255 - v) * .45)); g.shadowColor = rgba(c); g.shadowBlur = r * 1.5;
+  g.beginPath();
+  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = i % 2 ? r * .22 : r; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  g.closePath(); g.fill(); g.restore();
+}
+function drawArt(cv, fxId, pal) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (!w) return;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const g = cv.getContext("2d");
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.save();
+  (ART[fxId] || ART.static)(g, cv.width, cv.height, pal, seeded(fxId + pal.join("")));
+  g.restore();
+}
+function drawThumbs() {
+  for (const [id, s] of thumbSpec) {
+    const cv = document.querySelector(`[data-thumb="${id}"] canvas`);
+    if (cv) drawArt(cv, s.fx, s.palette);
+  }
+}
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawThumbs, 150); });
+
+function renderLiveUi() {
+  thumbSpec.clear();
+  const sc = $("scenes"); sc.innerHTML = "";
+  SCENES.forEach(([name, f, th, opts], i) => {
+    const on = f === fx && th === theme;
+    const b = previewCard("s" + i, { fx: f, palette: THEMES[th][1], speed: 35, scale: 100, density: 50, ...opts },
+      `<span class="nm">${name}</span><span class="sub">${effName(f)} · ${THEMES[th][0].toLowerCase()}</span>${on && live ? '<span class="playdot">играет</span>' : ""}`);
+    b.setAttribute("aria-pressed", on);
+    b.onclick = () => applyScene(f, th, opts);
+    sc.appendChild(b);
+  });
+  const fc = $("fxChips"); fc.innerHTML = "";
+  for (const [id, name, tag] of EFFECTS) {
+    const b = previewCard("e" + id, { fx: id, palette, speed: +$("speed").value, scale: +$("scale").value, density: +$("density").value },
+      `<span class="nm">${name}</span><span class="sub">${tag}</span>`);
+    b.setAttribute("aria-pressed", id === fx);
+    b.onclick = () => { fx = id; renderLiveUi(); pushSettings(true); };
+    fc.appendChild(b);
+  }
+  const tc = $("themeChips"); tc.innerHTML = "";
+  for (const [id, [name, cols]] of Object.entries(THEMES)) {
+    const b = document.createElement("button");
+    b.className = "theme";
+    b.setAttribute("aria-pressed", id === theme);
+    b.innerHTML = `<i style="background:${grad(cols)}"></i>${name}`;
+    b.onclick = () => { theme = id; palette = [...cols]; renderLiveUi(); pushSettings(true); };
+    tc.appendChild(b);
+  }
+  const c = $("colors"); c.innerHTML = "";
+  palette.forEach((h, i) => {
+    const l = document.createElement("label"); l.className = "cdot"; l.style.background = h; l.title = "Поменять цвет";
+    const inp = document.createElement("input"); inp.type = "color"; inp.value = h; inp.setAttribute("aria-label", `Цвет ${i + 1}`);
+    inp.oninput = () => { palette[i] = inp.value; l.style.background = inp.value; theme = "custom"; refreshEffectSpecs(); pushSettings(false); renderNow(); };
+    inp.onchange = renderLiveUi;
+    l.appendChild(inp); c.appendChild(l);
+  });
+  c.insertAdjacentHTML("beforeend", `<button class="round" id="addColor" title="Добавить цвет" ${palette.length >= 6 ? "disabled" : ""}><svg><use href="#i-plus"/></svg></button>
+    <button class="round" id="delColor" title="Убрать цвет" ${palette.length <= 2 ? "disabled" : ""}><svg><use href="#i-minus"/></svg></button>`);
+  $("addColor").onclick = () => { palette.push(palette[palette.length - 1]); theme = "custom"; renderLiveUi(); pushSettings(false); };
+  $("delColor").onclick = () => { palette.pop(); theme = "custom"; renderLiveUi(); pushSettings(false); };
+  $("densityRow").hidden = !EFFECTS.find(e => e[0] === fx)?.[3];
+  renderNow();
+  setTimeout(drawThumbs, 0);
+}
+// effect cards follow the current colors and sliders
+function refreshEffectSpecs() {
+  for (const [id] of EFFECTS) {
+    const s = thumbSpec.get("e" + id);
+    if (s) Object.assign(s, { palette, speed: +$("speed").value, scale: +$("scale").value, density: +$("density").value });
+  }
+  clearTimeout(artTimer); artTimer = setTimeout(drawThumbs, 120);
+}
+let artTimer;
+function renderNow() {
+  const scene = SCENES.find(s => s[1] === fx && s[2] === theme);
+  $("nowWhat").textContent = scene ? scene[0] : effName(fx);
+  $("nowSub").textContent = scene ? `${effName(fx)} · ${THEMES[theme][0].toLowerCase()}` : (THEMES[theme] ? THEMES[theme][0] : "свои цвета");
+  $("nowStrip").style.background = grad(palette, 135);
+  const avg = palette.map(hexToRgb).reduce((a, c) => a.map((v, i) => v + c[i] / palette.length), [0, 0, 0]).map(Math.round);
+  $("kbBody").style.setProperty("--spill", `rgba(${avg},.35)`);
+}
+function applyScene(f, th, opts) {
+  fx = f; theme = th; palette = [...THEMES[th][1]];
+  for (const [k, v] of Object.entries({ speed: 35, scale: 100, density: 50, ...opts })) $(k).value = v;
+  syncSliders(); renderLiveUi(); pushSettings(true);
+}
+const SLIDERS = { speed: v => v, scale: v => v + "%", bright: v => v + "%", density: v => v };
+function syncSliders() { for (const [id, fmt] of Object.entries(SLIDERS)) { $(id + "V").textContent = fmt($(id).value); fillRange($(id)); } }
+for (const id of Object.keys(SLIDERS)) $(id).addEventListener("input", () => { syncSliders(); refreshEffectSpecs(); pushSettings(false); });
+$("reverse").onchange = () => pushSettings(false);
+syncSliders(); renderLiveUi();
+
+function uiSettings() {
+  return { fx, theme, palette, reverse: $("reverse").checked, ...Object.fromEntries(Object.keys(SLIDERS).map(id => [id, +$(id).value])) };
+}
+function applyServerSettings(st) {
+  if (!st) return;
+  if (EFFECTS.some(e => e[0] === st.fx)) fx = st.fx;
+  if (Array.isArray(st.palette) && st.palette.length >= 2) palette = st.palette;
+  theme = THEMES[st.theme] ? st.theme : "custom";
+  $("reverse").checked = !!st.reverse;
+  for (const id of Object.keys(SLIDERS)) if (st[id] != null) $(id).value = st[id];
+  syncSliders(); renderLiveUi();
+}
+// A click on a scene/effect/theme also switches the keyboard on; sliders only change what's playing.
+let pushTimer;
+function pushSettings(startLive) {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    if (!connected) return;
+    try {
+      await api("/api/settings", { ...uiSettings(), ...(startLive ? { live: true } : {}) });
+      if (startLive && !live) { setLive(true); renderLiveUi(); }
+    } catch (e) { toast(e.message, true); }
+  }, startLive ? 0 : 120);
+}
+// cyclic gradient through a palette, t in [0,1) (fills a firmware effect's 7 colors)
+function samplePalette(t, pal = palette) {
+  const cols = pal.map(hexToRgb), n = cols.length;
+  t = ((t % 1) + 1) % 1;
+  const f = t * n, i = Math.floor(f), u = f - i, s = u * u * (3 - 2 * u);
+  const a = cols[i % n], b = cols[(i + 1) % n];
+  return a.map((v, c) => v + (b[c] - v) * s);
+}
+
+// ---------- Keyboard memory format (F75, read/written by server.py) ----------
+const CMD = { CUSTOM: 0x02, LED: 0x04, PALETTE: 0x09 };
+const LEN = { LED: 128, PALETTE: 490, CUSTOM: 378 };
+// Firmware effect numbers as tested on a real F75 (the official app's numbering differs)
+const FX = [
+  { hw: 1,  name: "Статичный",         desc: "Ровный свет одним цветом",              speed: false, color: true },
+  { hw: 2,  name: "Дыхание",           desc: "Плавно гаснет и загорается",            speed: true,  color: true },
+  { hw: 3,  name: "Спектр",            desc: "Дышит всеми цветами радуги",            speed: true,  color: false },
+  { hw: 4,  name: "Рябь по ряду",      desc: "От нажатой клавиши вдоль ряда",         speed: true,  color: true },
+  { hw: 5,  name: "Капли",             desc: "Падающие капли",                        speed: true,  color: true },
+  { hw: 6,  name: "Медленная волна",   desc: "Слева направо",                         speed: true,  color: true },
+  { hw: 7,  name: "Рябь",              desc: "От нажатой клавиши по всей клавиатуре", speed: true,  color: true },
+  { hw: 8,  name: "Мерцание",          desc: "Случайные клавиши",                     speed: true,  color: true },
+  { hw: 10, name: "Змейка",            desc: "Бегущая змейка",                        speed: true,  color: true },
+  { hw: 11, name: "Поток",             desc: "Слева направо",                         speed: true,  color: true },
+  { hw: 12, name: "Реакция",           desc: "Загорается нажатая клавиша",            speed: true,  color: true },
+  { hw: 13, name: "Волна от центра",   desc: "Из середины в обе стороны",             speed: true,  color: true },
+  { hw: 15, name: "Радужное колесо",   desc: "Радуга, свой цвет не задаётся",         speed: true,  color: false },
+  { hw: 16, name: "Водопад",           desc: "Радуга, свой цвет не задаётся",         speed: true,  color: false },
+  { hw: 17, name: "Вспышки из центра", desc: "Быстрое мерцание от середины",          speed: true,  color: true },
+  { hw: 32, name: "Своя картинка",     desc: "Свой цвет у каждой клавиши",            speed: false, color: false, custom: true },
+];
+const FX_BY_HW = Object.fromEntries(FX.map(f => [f.hw, f]));
+const FACTORY7 = [[255,0,0],[0,255,0],[0,0,255],[255,255,0],[255,0,255],[0,255,255],[255,255,255]];
+const slotOff = hw => 58 + 2 * (hw - 1);
+const palOff = (hw, c) => hw * 21 + c * 3;
+
+// ---------- Local helper (server.py) ----------
+const verbose = () => $("verbose").checked;
+async function api(path, body, timeoutMs = 20000) {
+  // a request the program never answers must not freeze the preview loops
+  const opts = { signal: AbortSignal.timeout(timeoutMs) };
+  if (body !== undefined) Object.assign(opts, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "ошибка");
+  return j;
+}
+async function writeBlock(cmd, data) {
+  if (verbose()) log(`→ запись 0x${cmd.toString(16)}: ${toHex(data)}`);
+  await api("/api/write", { cmd, data: toHex(data) });
+}
+
+const needDevice = ["liveBtn", "solidTest", "reloadMem", "restoreBtn", "sleepSel", "sleepSave", "resetAllPal", "autostart", "quitBtn"];
+function setOffline(msg) {
+  connected = false; setStatus(msg, "bad"); $("howto").classList.add("show");
+  needDevice.forEach(id => $(id).disabled = true); $("backupBtn").disabled = true;
+}
+async function connect() {
+  try {
+    const s = await api("/api/status");
+    connected = true;
+    setLive(s.live); applyServerSettings(s.settings); $("autostart").checked = s.autostart;
+    setStatus("Программа запущена", s.live ? "live" : "on");
+    $("howto").classList.remove("show");
+    needDevice.forEach(id => $(id).disabled = false);
+    await loadMemory();
+  } catch (e) {
+    setOffline("Программа не запущена");
+    if (location.protocol === "file:") toast("Открой страницу через иконку AULA RGB Studio в трее, а не двойным кликом по файлу.", true);
+  }
+}
+$("connectBtn").onclick = connect;
+setInterval(async () => {
+  if (!connected) return;
+  try {
+    const s = await api("/api/status");
+    if (s.live !== live) { setLive(s.live); renderLiveUi(); }
+    if (s.live && s.error) { $("onAir").textContent = "нет связи"; log("Ошибка: " + s.error); }
+    $("liveInfo").textContent = s.live ? `Сейчас на клавиатуру уходит ${s.fps} кадров в секунду.` : "Пригодится, если что-то пошло не так — его можно скопировать и отправить.";
+  } catch { setOffline("Программа выключена"); }
+}, 1500);
+
+// ---------- Keyboard memory ----------
+let mem = null;          // { led, palette, custom, battery } as read from the keyboard
+let selHw = null, draft = null;
+
+async function loadMemory() {
+  $("memInfo").textContent = "Читаю, что записано в клавиатуре…";
+  try {
+    const m = await api("/api/memory");
+    const led = fromHex(m.led);
+    if (led.length !== LEN.LED || led[126] !== 0x5A || led[127] !== 0xA5) throw new Error("клавиатура ответила что-то непонятное");
+    mem = { led, palette: fromHex(m.palette), custom: fromHex(m.custom), battery: m.battery };
+    log(`Прочитано: режим №${mem.led[10]}, палитра ${mem.palette.length} байт, картинка ${mem.custom.length} байт`);
+    autoBackup();
+    renderMemory();
+  } catch (e) {
+    $("memInfo").textContent = "Не получилось прочитать: " + e.message;
+    log("Ошибка чтения: " + e.message); toast(e.message, true);
+  }
+}
+$("reloadMem").onclick = loadMemory;
+
+function fxColors(hw) {
+  if (!mem || hw > 22) return null;
+  return Array.from({ length: 7 }, (_, c) => Array.from(mem.palette.slice(palOff(hw, c), palOff(hw, c) + 3)));
+}
+const customRgb = led => mem && led < 126 ? [mem.custom[led], mem.custom[126 + led], mem.custom[252 + led]] : [0, 0, 0];
+function renderMemory() {
+  const cur = mem.led[10], f0 = FX_BY_HW[cur];
+  const sleepS = mem.led[24] * 30;
+  $("memNow").textContent = `Сейчас в клавиатуре: ${f0 ? f0.name : "режим №" + cur}`;
+  $("memInfo").textContent = (mem.battery != null ? `Заряд ${mem.battery}% · ` : "") + `засыпает ${sleepS ? "через " + sleepS / 60 + " мин" : "никогда"}`;
+  setStatus(mem.battery != null ? `Клавиатура на связи · ${mem.battery}%` : "Клавиатура на связи", live ? "live" : "on");
+  $("sleepSel").value = [...$("sleepSel").options].some(o => +o.value === sleepS) ? sleepS : "120";
+  $("backupBtn").disabled = false;
+
+  const list = $("fxList"); list.innerHTML = "";
+  for (const f of FX) {
+    const o = slotOff(f.hw), bright = mem.led[o], speed = mem.led[o + 1] >> 4, color = mem.led[o + 1] & 0x0F;
+    const cols = fxColors(f.hw);
+    let sw;
+    if (f.custom) sw = KEYS.filter((_, i) => i % 6 === 0).map(k => `<span style="background:rgb(${customRgb(k.led)})"></span>`).join("");
+    else if (!f.color) sw = `<span style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)"></span>`;
+    else if (color === 7) sw = cols.map(c => `<span style="background:rgb(${c})"></span>`).join("");
+    else sw = `<span style="background:rgb(${cols[color]})"></span>`;
+    const card = document.createElement("button");
+    card.className = "card fw";
+    card.setAttribute("aria-pressed", selHw === f.hw);
+    card.innerHTML = `${f.hw === cur ? '<span class="badge">включён</span>' : ""}<span class="nm">${f.name}</span><span class="ds">${f.desc}</span>
+      <span class="sw">${sw}</span><span class="meta">яркость ${bright} из 9${f.speed ? ` · скорость ${speed} из 4` : ""}</span>`;
+    card.onclick = () => selectFx(f.hw);
+    list.appendChild(card);
+  }
+  paintBoard(customBoard, customRgb);
+  if (selHw != null) renderEditor();
+}
+function selectFx(hw) {
+  selHw = hw;
+  const o = slotOff(hw);
+  draft = { bright: mem.led[o], speed: mem.led[o + 1] >> 4, color: mem.led[o + 1] & 0x0F, pal: fxColors(hw) };
+  renderMemory();
+}
+function renderEditor() {
+  const f = FX_BY_HW[selHw];
+  $("edEmpty").hidden = true; $("edBody").hidden = false;
+  $("edName").textContent = f.name; $("edDesc").textContent = f.desc;
+  $("edColorBlock").hidden = !f.color;
+  $("edCustomBlock").hidden = !f.custom;
+  $("edSpeedBlock").hidden = !f.speed;
+  $("edBright").value = draft.bright; $("edBrightV").textContent = draft.bright; fillRange($("edBright"));
+  $("edSpeed").value = draft.speed; $("edSpeedV").textContent = draft.speed; fillRange($("edSpeed"));
+  if (f.color) {
+    const s = $("edSlots"); s.innerHTML = "";
+    draft.pal.forEach((c, i) => {
+      const w = document.createElement("div"); w.className = "slot";
+      w.innerHTML = `<label class="cdot" style="background:${rgbToHex(c)}"><input type="color" value="${rgbToHex(c)}" aria-label="Цвет ${i + 1}"></label>
+        <input type="radio" name="edSlot" aria-label="Светить цветом ${i + 1}" ${draft.color === i ? "checked" : ""}>`;
+      w.querySelector("input[type=color]").oninput = e => { draft.pal[i] = hexToRgb(e.target.value); w.querySelector(".cdot").style.background = e.target.value; };
+      w.querySelector("input[type=radio]").onchange = () => { draft.color = i; };
+      s.appendChild(w);
+    });
+    const m = document.createElement("div"); m.className = "slot";
+    m.innerHTML = `<span class="cdot" style="background:${grad(draft.pal.map(rgbToHex), 120)};cursor:default"></span><label style="display:flex;gap:5px;align-items:center"><input type="radio" name="edSlot" ${draft.color === 7 ? "checked" : ""}>перелив</label>`;
+    m.querySelector("input").onchange = () => { draft.color = 7; };
+    s.appendChild(m);
+  }
+}
+$("edBright").oninput = e => { draft.bright = +e.target.value; $("edBrightV").textContent = draft.bright; fillRange(e.target); };
+$("edSpeed").oninput = e => { draft.speed = +e.target.value; $("edSpeedV").textContent = draft.speed; fillRange(e.target); };
+$("edPink").onclick = () => { draft.pal = Array.from({ length: 7 }, (_, i) => samplePalette(i / 7).map(Math.round)); renderEditor(); };
+$("edFactoryPal").onclick = () => { draft.pal = FACTORY7.map(c => [...c]); renderEditor(); };
+
+// Every write: stop the live stream, change only the bytes for this effect, write, read back.
+async function memWrite(label, fn) {
+  if (!connected || !mem) return;
+  if (live) await stopLive();
+  log(`── ${label} ──`);
+  try {
+    await fn();
+    log("✓ Готово"); toast("Готово: " + label.toLowerCase());
+  } catch (e) { log("Ошибка: " + e.message); toast("Не получилось: " + e.message, true); }
+  await loadMemory();
+}
+function applyDraft(activate) {
+  const f = FX_BY_HW[selHw];
+  return memWrite(activate ? `Включил «${f.name}» в клавиатуре` : `Сохранил «${f.name}»`, async () => {
+    if (f.color && selHw <= 22) {
+      const pal = new Uint8Array(mem.palette);
+      draft.pal.forEach((c, i) => pal.set(c, palOff(selHw, i)));
+      if (toHex(pal) !== toHex(mem.palette)) { log("Пишу палитру…"); await writeBlock(CMD.PALETTE, pal); }
+    }
+    const led = new Uint8Array(mem.led), o = slotOff(selHw);
+    led[o] = draft.bright;
+    led[o + 1] = (draft.speed << 4) | (f.color ? draft.color : (mem.led[o + 1] & 0x0F));
+    if (activate) led[10] = selHw;
+    log("Пишу настройки подсветки…"); await writeBlock(CMD.LED, led);
+  });
+}
+$("edApply").onclick = () => applyDraft(true);
+$("edSaveOnly").onclick = () => applyDraft(false);
+
+let lastShown = {};
+function patternTable() {
+  const t = new Uint8Array(LEN.CUSTOM);
+  for (const [led, c] of Object.entries(lastShown)) { const i = +led; if (i < 126) { t[i] = c[0]; t[126 + i] = c[1]; t[252 + i] = c[2]; } }
+  return t;
+}
+$("edWritePattern").onclick = () => memWrite("Записал картинку в клавиатуру", async () => { await writeBlock(CMD.CUSTOM, patternTable()); });
+$("sleepSave").onclick = () => memWrite("Сохранил время сна", async () => {
+  const led = new Uint8Array(mem.led); led[24] = $("sleepSel").value / 30; await writeBlock(CMD.LED, led);
+});
+$("resetAllPal").onclick = () => {
+  if (!confirm("Вернуть заводские 7 цветов во все режимы клавиатуры?")) return;
+  memWrite("Вернул заводские цвета", async () => {
+    const pal = new Uint8Array(mem.palette);
+    for (let hw = 0; hw < 23; hw++) FACTORY7.forEach((c, i) => pal.set(c, palOff(hw, i)));
+    await writeBlock(CMD.PALETTE, pal);
+  });
+};
+
+// ---------- Backup ----------
+const backupJson = () => JSON.stringify({ app: "aula-rgb-studio", date: new Date().toISOString(),
+  led: toHex(mem.led), palette: toHex(mem.palette), custom: toHex(mem.custom) }, null, 1);
+function autoBackup() {
+  try {
+    let b = localStorage.getItem("aulaBackup");
+    if (!b) { localStorage.setItem("aulaBackup", backupJson()); b = localStorage.getItem("aulaBackup"); log("Резервная копия настроек сохранена в браузере"); }
+    const d = JSON.parse(b);
+    $("autoBackupInfo").innerHTML = `Копия от ${new Date(d.date).toLocaleDateString()} — <a href="#" id="restoreAuto" style="color:var(--text);text-underline-offset:3px">вернуть её</a>.`;
+    $("restoreAuto").onclick = ev => { ev.preventDefault(); restore(d); };
+  } catch {}
+}
+$("backupBtn").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([backupJson()], { type: "application/json" }));
+  a.download = `aula-f75-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+};
+$("restoreBtn").onclick = () => $("restoreFile").click();
+$("restoreFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try { restore(JSON.parse(await f.text())); } catch { toast("Это не файл резервной копии", true); }
+};
+function restore(d) {
+  const led = fromHex(d.led || ""), pal = fromHex(d.palette || ""), custom = fromHex(d.custom || "");
+  if (led.length !== LEN.LED || led[126] !== 0x5A || pal.length !== LEN.PALETTE || custom.length !== LEN.CUSTOM) { toast("Файл копии повреждён", true); return; }
+  if (!confirm(`Записать в клавиатуру копию от ${new Date(d.date).toLocaleString()}?`)) return;
+  memWrite("Восстановил копию", async () => {
+    await writeBlock(CMD.PALETTE, pal);
+    await writeBlock(CMD.CUSTOM, custom);
+    await writeBlock(CMD.LED, led);
+  });
+}
+
+// ---------- Live on/off + previews ----------
+function setLive(on) {
+  live = on;
+  const b = $("liveBtn");
+  b.setAttribute("aria-pressed", on);
+  b.querySelector("span").textContent = on ? "Выключить" : "Включить";
+  $("onAir").textContent = on ? "на клавиатуре" : "не запущено";
+  $("onAir").classList.toggle("off", !on);
+  if (connected) $("dot").className = "dot " + (on ? "live" : "on");
+}
+async function stopLive() { if (live) { setLive(false); renderLiveUi(); try { await api("/api/settings", { live: false }); } catch {} } }
+$("liveBtn").onclick = async () => {
+  try { await api("/api/settings", { ...uiSettings(), live: !live }); setLive(!live); renderLiveUi(); log(live ? "Анимация включена" : "Анимация выключена"); }
+  catch (e) { toast(e.message, true); }
+};
+$("solidTest").onclick = async () => {
+  await stopLive();
+  try { await api("/api/solid", { rgb: [255, 40, 200] }); toast("Клавиатура должна стать розовой на пару секунд"); }
+  catch (e) { toast(e.message, true); }
+};
+$("autostart").onchange = async e => {
+  try { await api("/api/autostart", { on: e.target.checked }); await api("/api/settings", { autostart: e.target.checked });
+    toast(e.target.checked ? "Программа будет запускаться вместе с Windows" : "Автозапуск выключен"); }
+  catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
+};
+$("quitBtn").onclick = async () => {
+  if (!confirm("Выключить программу? Анимация остановится.")) return;
+  try { await api("/api/quit", {}); } catch {}
+  setOffline("Программа выключена");
+};
+// big preview = exactly what the keyboard gets
+let framePending = false;
+setInterval(async () => {
+  if (!connected || framePending || document.hidden) return;
+  framePending = true;
+  try { const f = await api("/api/frame", undefined, 2000); lastShown = f.leds; paintBoard(liveBoard, l => f.leds[l]); }
+  catch {} finally { framePending = false; }
+}, 100);
+connect();
+</script>
+</body>
+</html>
