@@ -20,6 +20,7 @@
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html { scrollbar-color: var(--line-2) var(--bg); }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--ui); min-height: 100vh; }
   ::selection { background: var(--live); color: #fff; }
@@ -198,6 +199,7 @@
     <nav class="tabs" role="tablist">
       <button class="tab" role="tab" aria-selected="true" data-page="live">Анимации</button>
       <button class="tab" role="tab" aria-selected="false" data-page="mem">Память клавиатуры</button>
+      <button class="tab" role="tab" aria-selected="false" data-page="keys">Клавиши</button>
       <button class="tab" role="tab" aria-selected="false" data-page="diag">Настройки</button>
     </nav>
     <div class="spacer"></div>
@@ -301,6 +303,39 @@
               <button class="btn primary" id="edApply">Записать и включить</button>
               <button class="btn" id="edSaveOnly">Только сохранить</button>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Key remap ===== -->
+  <section class="page" id="page-keys">
+    <div class="memhead">
+      <div><div class="now">Что делает каждая клавиша</div>
+        <div class="note" style="margin:2px 0 0">Нажми на клавишу на картинке и выбери, чем она будет. Меняется только обычный слой, Fn-слой не трогается.</div></div>
+      <div class="spacer"></div>
+      <div class="btnrow" style="margin:0">
+        <button class="btn" id="altToCtrl" hidden>Правый Alt → правый Ctrl</button>
+        <button class="btn" id="keysRestore" disabled>Вернуть как было</button>
+      </div>
+    </div>
+    <div class="memgrid">
+      <div class="stage" style="padding:24px"><div class="kbbody"><div id="kbKeys" class="kb pick"></div></div>
+        <p class="note" id="keysNote">Подключись, и раскладка прочитается сама.</p></div>
+      <div class="editor">
+        <div class="empty" id="keyEmpty">Выбери клавишу на картинке.</div>
+        <div id="keyBody" hidden>
+          <h3 id="keyName"></h3>
+          <p class="ds" id="keyNow"></p>
+          <div class="part">
+            <h2>БУДЕТ</h2>
+            <select id="keyTarget" style="width:100%"></select>
+            <div class="btnrow">
+              <button class="btn primary" id="keyWrite" disabled>Записать в клавиатуру</button>
+              <button class="btn" id="keyUndo">Отменить</button>
+            </div>
+            <p class="note" id="keyPending"></p>
           </div>
         </div>
       </div>
@@ -800,8 +835,8 @@ function samplePalette(t, pal = palette) {
 }
 
 // ---------- Keyboard memory format (F75, read/written by server.py) ----------
-const CMD = { CUSTOM: 0x02, LED: 0x04, PALETTE: 0x09 };
-const LEN = { LED: 128, PALETTE: 490, CUSTOM: 378 };
+const CMD = { KEYMAP: 0x01, CUSTOM: 0x02, LED: 0x04, PALETTE: 0x09 };
+const LEN = { KEYMAP: 504, LED: 128, PALETTE: 490, CUSTOM: 378 };
 // Firmware effect numbers as tested on a real F75 (the official app's numbering differs)
 const FX = [
   { hw: 1,  name: "Статичный",         desc: "Ровный свет одним цветом",              speed: false, color: true },
@@ -882,10 +917,11 @@ async function loadMemory() {
     const m = await api("/api/memory");
     const led = fromHex(m.led);
     if (led.length !== LEN.LED || led[126] !== 0x5A || led[127] !== 0xA5) throw new Error("клавиатура ответила что-то непонятное");
-    mem = { led, palette: fromHex(m.palette), custom: fromHex(m.custom), battery: m.battery };
+    mem = { led, palette: fromHex(m.palette), custom: fromHex(m.custom), keymap: m.keymap ? fromHex(m.keymap) : null, battery: m.battery };
     log(`Прочитано: режим №${mem.led[10]}, палитра ${mem.palette.length} байт, картинка ${mem.custom.length} байт`);
     autoBackup();
     renderMemory();
+    keymapLoaded();
   } catch (e) {
     $("memInfo").textContent = "Не получилось прочитать: " + e.message;
     log("Ошибка чтения: " + e.message); toast(e.message, true);
@@ -1013,7 +1049,7 @@ $("resetAllPal").onclick = () => {
 
 // ---------- Backup ----------
 const backupJson = () => JSON.stringify({ app: "aula-rgb-studio", date: new Date().toISOString(),
-  led: toHex(mem.led), palette: toHex(mem.palette), custom: toHex(mem.custom) }, null, 1);
+  led: toHex(mem.led), palette: toHex(mem.palette), custom: toHex(mem.custom), keymap: mem.keymap ? toHex(mem.keymap) : undefined }, null, 1);
 function autoBackup() {
   try {
     let b = localStorage.getItem("aulaBackup");
@@ -1042,8 +1078,111 @@ function restore(d) {
     await writeBlock(CMD.PALETTE, pal);
     await writeBlock(CMD.CUSTOM, custom);
     await writeBlock(CMD.LED, led);
+    const km = fromHex(d.keymap || "");
+    if (km.length === LEN.KEYMAP) await writeBlock(CMD.KEYMAP, km);
   });
 }
+
+// ---------- Key remap (base layer: 126 entries of [type, modifier bits, 0, HID usage]) ----------
+const MODS = [[0x01, "Ctrl", "левый"], [0x02, "Shift", "левый"], [0x04, "Alt", "левый"], [0x08, "Win", "левый"],
+              [0x10, "Ctrl", "правый"], [0x20, "Shift", "правый"], [0x40, "Alt", "правый"], [0x80, "Win", "правый"]];
+const USAGE = { 0x28: "Enter", 0x29: "Esc", 0x2A: "Bksp", 0x2B: "Tab", 0x2C: "Space", 0x2D: "-", 0x2E: "=", 0x2F: "[", 0x30: "]", 0x31: "\\",
+  0x33: ";", 0x34: "'", 0x35: "`", 0x36: ",", 0x37: ".", 0x38: "/", 0x39: "Caps", 0x46: "PrtSc", 0x47: "ScrLk", 0x48: "Pause",
+  0x49: "Ins", 0x4A: "Home", 0x4B: "PgUp", 0x4C: "Del", 0x4D: "End", 0x4E: "PgDn", 0x4F: "→", 0x50: "←", 0x51: "↓", 0x52: "↑", 0x65: "Menu" };
+for (let i = 0; i < 26; i++) USAGE[0x04 + i] = String.fromCharCode(65 + i);
+for (let i = 0; i < 9; i++) USAGE[0x1E + i] = String(i + 1);
+USAGE[0x27] = "0";
+for (let i = 0; i < 12; i++) USAGE[0x3A + i] = "F" + (i + 1);
+const FULL = { Esc: "Escape", Bksp: "Backspace", Caps: "Caps Lock", PrtSc: "Print Screen", ScrLk: "Scroll Lock", Ins: "Insert", Del: "Delete",
+  PgUp: "Page Up", PgDn: "Page Down", Menu: "Меню (как правый клик)", "→": "Стрелка вправо", "←": "Стрелка влево", "↓": "Стрелка вниз", "↑": "Стрелка вверх" };
+function decodeKey(e) {
+  const [type, mod, , use] = e;
+  if (type === 0x0D) return { short: "Fn", full: "Fn", fn: true };
+  if (type !== 0) return { short: "•", full: "особая функция" };
+  const m = MODS.filter(([b]) => mod & b);
+  if (!mod && !use) return { short: "—", full: "ничего (выключена)" };
+  if (m.length === 1 && !use) return { short: m[0][1], full: `${m[0][1]} ${m[0][2]}` };
+  const key = USAGE[use] || `код ${use}`;
+  if (!mod) return { short: key, full: FULL[key] || key };
+  return { short: m.map(x => x[1]).join("+") + "+" + key, full: m.map(x => x[1]).join(" + ") + " + " + key };
+}
+const TARGETS = [
+  ["Модификаторы", [["Ctrl правый", [0, 0x10, 0, 0]], ["Alt правый", [0, 0x40, 0, 0]], ["Shift правый", [0, 0x20, 0, 0]], ["Win правый", [0, 0x80, 0, 0]],
+                    ["Ctrl левый", [0, 0x01, 0, 0]], ["Alt левый", [0, 0x04, 0, 0]], ["Shift левый", [0, 0x02, 0, 0]], ["Win левый", [0, 0x08, 0, 0]]]],
+  ["Клавиши", [["Меню (как правый клик)", [0, 0, 0, 0x65]], ["Print Screen", [0, 0, 0, 0x46]], ["Insert", [0, 0, 0, 0x49]], ["Delete", [0, 0, 0, 0x4C]],
+               ["Home", [0, 0, 0, 0x4A]], ["End", [0, 0, 0, 0x4D]], ["Page Up", [0, 0, 0, 0x4B]], ["Page Down", [0, 0, 0, 0x4E]],
+               ["Escape", [0, 0, 0, 0x29]], ["Caps Lock", [0, 0, 0, 0x39]]]],
+  ["Другое", [["Выключить клавишу", [0, 0, 0, 0]]]],
+];
+const keysBoard = buildBoard($("kbKeys"));
+let keyDraft = null, keySel = null;
+const entry = (map, led) => Array.from(map.slice(led * 4, led * 4 + 4));
+const same = (a, b) => a.every((v, i) => v === b[i]);
+function relabel(board, map) {
+  for (const k of KEYS) {
+    const d = decodeKey(entry(map, k.led));
+    if (d.short !== "•") board.get(k.led).textContent = d.short === "—" ? "" : d.short;
+  }
+}
+function renderKeys() {
+  if (!mem || !mem.keymap) return;
+  relabel(keysBoard, keyDraft); relabel(liveBoard, mem.keymap);
+  for (const k of KEYS) {
+    const el = keysBoard.get(k.led), changed = !same(entry(keyDraft, k.led), entry(mem.keymap, k.led));
+    el.style.background = k.led === keySel ? "#5a5a66" : changed ? "var(--live)" : "";
+    el.style.color = changed || k.led === keySel ? "#fff" : "";
+    el.style.cursor = decodeKey(entry(mem.keymap, k.led)).fn ? "not-allowed" : "pointer";
+  }
+  const pending = KEYS.filter(k => !same(entry(keyDraft, k.led), entry(mem.keymap, k.led))).length;
+  $("keyWrite").disabled = !pending;
+  $("keyPending").textContent = pending ? `Изменено клавиш: ${pending}. Нажми «Записать», чтобы клавиатура запомнила.` : "";
+  // a one-click fix for the common case: a right Alt next to Fn that should be a right Ctrl
+  const ralt = KEYS.find(k => same(entry(mem.keymap, k.led), [0, 0x40, 0, 0]));
+  $("altToCtrl").hidden = !ralt;
+  if (keySel != null) {
+    const now = decodeKey(entry(mem.keymap, keySel)), will = entry(keyDraft, keySel);
+    $("keyEmpty").hidden = true; $("keyBody").hidden = false;
+    $("keyName").textContent = `Клавиша «${now.short === "—" ? "пустая" : now.short}»`;
+    $("keyNow").textContent = "Сейчас: " + now.full;
+    const sel = $("keyTarget");
+    sel.innerHTML = `<option value="">— оставить как есть —</option>` + TARGETS.map(([g, items]) =>
+      `<optgroup label="${g}">${items.map(([n, b]) => `<option value="${b.join(",")}" ${same(b, will) && !same(will, entry(mem.keymap, keySel)) ? "selected" : ""}>${n}</option>`).join("")}</optgroup>`).join("");
+  }
+}
+for (const [led, el] of keysBoard) el.addEventListener("click", () => {
+  if (!mem || !mem.keymap) return;
+  if (decodeKey(entry(mem.keymap, led)).fn) { toast("Fn лучше не трогать: без неё пропадёт доступ к Fn-слою"); return; }
+  keySel = led; renderKeys();
+});
+$("keyTarget").onchange = e => {
+  const b = e.target.value ? e.target.value.split(",").map(Number) : entry(mem.keymap, keySel);
+  keyDraft.set(b, keySel * 4); renderKeys();
+};
+$("keyUndo").onclick = () => { keyDraft = new Uint8Array(mem.keymap); renderKeys(); };
+$("keyWrite").onclick = () => memWrite("Записал раскладку в клавиатуру", async () => { await writeBlock(CMD.KEYMAP, keyDraft); });
+$("altToCtrl").onclick = () => {
+  const k = KEYS.find(k => same(entry(mem.keymap, k.led), [0, 0x40, 0, 0]));
+  if (!k || !confirm("Сделать правый Alt правым Ctrl? Это запишется в клавиатуру, вернуть можно кнопкой «Вернуть как было».")) return;
+  keyDraft = new Uint8Array(mem.keymap); keyDraft.set([0, 0x10, 0, 0], k.led * 4);
+  memWrite("Правый Alt теперь правый Ctrl", async () => { await writeBlock(CMD.KEYMAP, keyDraft); });
+};
+function keymapLoaded() {
+  if (!mem.keymap || mem.keymap.length !== LEN.KEYMAP) { $("keysNote").textContent = "Не удалось прочитать раскладку."; return; }
+  keyDraft = new Uint8Array(mem.keymap);
+  try { if (!localStorage.getItem("aulaKeymapBackup")) localStorage.setItem("aulaKeymapBackup", JSON.stringify({ date: new Date().toISOString(), keymap: toHex(mem.keymap) })); } catch {}
+  $("keysRestore").disabled = false;
+  $("keysNote").textContent = "Розовым — клавиши, которые ты изменил, но ещё не записал.";
+  renderKeys();
+}
+$("keysRestore").onclick = () => {
+  let b = null;
+  try { b = JSON.parse(localStorage.getItem("aulaKeymapBackup") || "null"); } catch {}
+  if (!b) { toast("Копии раскладки нет", true); return; }
+  if (!confirm(`Вернуть раскладку, сохранённую ${new Date(b.date).toLocaleString()}?`)) return;
+  const km = fromHex(b.keymap);
+  if (km.length !== LEN.KEYMAP) { toast("Копия раскладки повреждена", true); return; }
+  memWrite("Вернул раскладку", async () => { await writeBlock(CMD.KEYMAP, km); });
+};
 
 // ---------- Live on/off + previews ----------
 function setLive(on) {

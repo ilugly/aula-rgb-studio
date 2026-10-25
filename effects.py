@@ -145,15 +145,28 @@ class Plasma(Effect):
 
 
 class Lava(Effect):
+    """A lava lamp: a few blobs with clear edges slowly rise from the hot bottom, cool at the top and
+    sink back, merging when they meet. The palette runs dark liquid → glowing wax (first → last colour)."""
+    LANES = [(.12, .085, .23, 0.0), (.33, .07, .17, 2.1), (.55, .095, .2, 4.0), (.75, .075, .26, 1.2), (.92, .08, .19, 5.2)]
+
     def frame(self, dt, ctx):
-        pal, sc, t = ctx["pal"], ctx["sc"], self.t * .5
-        blobs = [(.5 + .42 * math.sin(t * .7 + i * 2.1), .5 + .45 * math.sin(t * .9 + i * 1.3 + 1), (.16 + .05 * i) * sc)
-                 for i in range(4)]
+        pal, sc, t = ctx["pal"], ctx["sc"], self.t
+        blobs = []
+        for x0, r, speed, off in self.LANES:
+            ph = t * speed + off
+            blobs.append((x0 + .03 * math.sin(ph * 1.7), .5 - .68 * math.cos(ph), r * sc * (1 + .15 * math.sin(ph * 2))))
+        liquid = mul(lin(pal, 0), .1)
         out = {}
         for led, x, y in KEYS:
-            f = sum(r * r / (dist(x, y, bx, by) ** 2 + .002) for bx, by, r in blobs)
-            k = min(1.0, f / 1.6)
-            out[led] = mul(cyc(pal, k * .6 + t * .04), .12 + .88 * k ** 1.3)
+            f = sum(r * r / (dist(x, y, bx, by) ** 2 + 1e-4) for bx, by, r in blobs)
+            heat = max(0.0, y - .7) / .3                                  # the lamp's warm base
+            col = add(liquid, mul(lin(pal, .3), .3 * heat))
+            if f >= 1:                                                     # inside wax: brighter towards the core
+                col = lin(pal, .65 + .35 * min(1.0, (f - 1) / 1.5))
+            elif f > .55:                                                  # soft rim
+                k = smooth((f - .55) / .45)
+                col = add(mul(col, 1 - k), mul(lin(pal, .5), k))
+            out[led] = col
         return out
 
 

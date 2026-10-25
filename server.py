@@ -21,8 +21,8 @@ SETTINGS_FILE = os.path.join(DATA, "settings.json")
 STARTUP_FILE = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup\AULA RGB Studio.vbs")
 ctypes.WinDLL("winmm").timeBeginPeriod(1)  # 1 ms sleep resolution for the 5 ms packet gaps
 
-CMD_CUSTOM, CMD_LED, CMD_PALETTE, CMD_PROFILE, CMD_LIVE = 0x02, 0x04, 0x09, 0x0A, 0x88
-BLOCK_LEN = {CMD_CUSTOM: 378, CMD_LED: 128, CMD_PALETTE: 490}
+CMD_KEYMAP, CMD_CUSTOM, CMD_LED, CMD_PALETTE, CMD_PROFILE, CMD_LIVE = 0x01, 0x02, 0x04, 0x09, 0x0A, 0x88
+BLOCK_LEN = {CMD_KEYMAP: 504, CMD_CUSTOM: 378, CMD_LED: 128, CMD_PALETTE: 490}  # keymap: base layer, 126 × 4 bytes
 
 # ---------------------------------------------------------------- keyboard
 class Keyboard:
@@ -254,7 +254,8 @@ class Handler(BaseHTTPRequestHandler):
                     battery = prof[0] if prof and prof[0] <= 100 else None
                 except Exception:
                     battery = None
-                self._json({"ok": True, "led": led.hex(), "palette": pal.hex(), "custom": custom.hex(), "battery": battery})
+                keymap = kb.read_block(CMD_KEYMAP)
+                self._json({"ok": True, "led": led.hex(), "palette": pal.hex(), "custom": custom.hex(), "keymap": keymap.hex(), "battery": battery})
             except Exception as e:
                 self._json({"ok": False, "error": str(e)})
         else:
