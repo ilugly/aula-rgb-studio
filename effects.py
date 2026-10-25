@@ -171,19 +171,62 @@ class Lava(Effect):
 
 
 class Heartbeat(Effect):
-    def band(self, x, y, sc):
-        return min(.999, dist(x, y, .5, .5) * 1.8)
+    """A heart monitor: the pulse line sweeps left to right across the keys — flat, a small bump,
+    a spike up to the F-row and down to the space bar, another bump — with a bright pen at the
+    front and the trace fading behind it."""
+    COLS, ROWS = 16, 6
+    CELL = {led: (min(15, int(x * 16)), round(y * 5)) for led, x, y in KEYS}
+
+    def __init__(self):
+        super().__init__()
+        self.pen = 0.0        # pen position in columns
+        self.trace = {}       # column → (lowest row, highest row, time drawn)
+
+    @staticmethod
+    def wave(p):
+        """Pulse height (row, 0 = top, 5 = bottom) at phase p of one beat."""
+        base = 3.2
+        if .06 < p < .16:                                   # P bump
+            return base - .7 * math.sin((p - .06) / .1 * math.pi)
+        if .24 < p < .27:                                   # Q dip
+            return base + .6 * (p - .24) / .03
+        if .27 <= p < .31:                                  # R spike to the top row
+            return base + .6 - (base + .6) * (p - .27) / .04
+        if .31 <= p < .35:                                  # S dip to the bottom row
+            return 5 * (p - .31) / .04
+        if .35 <= p < .39:                                  # back to the line
+            return 5 - (5 - base) * (p - .35) / .04
+        if .52 < p < .72:                                   # T bump
+            return base - 1.0 * math.sin((p - .52) / .2 * math.pi)
+        return base
 
     def frame(self, dt, ctx):
-        pal, t = ctx["pal"], self.t
-        ph = (t * .55) % 1
-        env = math.exp(-((ph - .0) / .06) ** 2) + .75 * math.exp(-((ph - .2) / .07) ** 2)
+        pal, adt = ctx["pal"], abs(dt)
+        beat_cols = 11 * ctx["sc"]                          # one heartbeat spans this many columns
+        old = self.pen
+        self.pen += adt * 9                                 # columns per second (speed slider scales dt)
+        steps = max(1, int((self.pen - old) * 8))
+        for i in range(1, steps + 1):                       # sample finely so the spike isn't skipped
+            x = old + (self.pen - old) * i / steps
+            col, sweep = int(x) % self.COLS, int(x) // self.COLS
+            y = self.wave((x / beat_cols) % 1)
+            lo, hi, when, was = self.trace.get(col, (y, y, -1, -1))
+            if was != sweep:                                # the pen comes back round: start the column afresh
+                lo = hi = y
+            self.trace[col] = (min(lo, y), max(hi, y), self.t, sweep)
+        head = int(self.pen) % self.COLS
         out = {}
-        for led, x, y in KEYS:
-            d = dist(x, y, .5, .5) / ctx["sc"]
-            wave = math.exp(-((d - ph * 1.6) / .12) ** 2) * (1 - ph)
-            b = .12 + .88 * min(1.0, env * (1 - d * .6) + wave * .7)
-            out[led] = mul(cyc(pal, d * .45 + t * .03), b)
+        for led, (c, r) in self.CELL.items():
+            col = [0, 0, 0]
+            if c in self.trace:
+                lo, hi, when, _ = self.trace[c]
+                if round(lo) <= r <= round(hi):
+                    age = self.t - when
+                    fade = math.exp(-age * 1.1)
+                    col = mul(lin(pal, .2 + .7 * fade), .15 + .85 * fade)
+                    if c == head:                           # the pen itself glows white-hot
+                        col = add(mul(col, .4), [150, 150, 150])
+            out[led] = col
         return out
 
 
