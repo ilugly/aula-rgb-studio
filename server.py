@@ -210,6 +210,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._local():
             return
+        self.path = self.path.split("?", 1)[0]   # "?v=…" only busts the browser cache
         if self.path in ("/", "/index.html"):
             with open(os.path.join(RES, "web", "index.html"), "rb") as f:
                 body = f.read()
