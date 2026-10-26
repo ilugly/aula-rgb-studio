@@ -1,4 +1,4 @@
-"""Global Windows hotkeys: switch scenes, colour themes and brightness without opening the page.
+﻿"""Global Windows hotkeys: switch scenes, colour themes and brightness without opening the page.
 
 The keyboard's own Fn shortcuts are handled inside its firmware and never reach the PC, so these
 use Ctrl+Alt instead. THEMES and SCENES mirror the lists in web/index.html (keep them in sync).
@@ -47,7 +47,7 @@ ACTIONS = {  # id: (default combo, label)
     "scene_next": ("Ctrl+Alt+Right", "Следующая сцена"), "scene_prev": ("Ctrl+Alt+Left", "Предыдущая сцена"),
     "theme_next": ("Ctrl+Alt+Up", "Следующие цвета"), "theme_prev": ("Ctrl+Alt+Down", "Предыдущие цвета"),
     "bright_up": ("Ctrl+Alt+PageUp", "Ярче"), "bright_down": ("Ctrl+Alt+PageDown", "Тусклее"),
-    "toggle": ("Ctrl+Alt+Space", "Включить / выключить анимацию"),
+    "toggle": ("Ctrl+Alt+Home", "Включить / выключить анимацию"),
 }
 DEFAULT_KEYS = {k: v[0] for k, v in ACTIONS.items()}
 _ACTION = {"scene_next": ("scene", 1), "scene_prev": ("scene", -1), "theme_next": ("theme", 1), "theme_prev": ("theme", -1),
