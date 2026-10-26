@@ -353,6 +353,65 @@ class Fire(Effect):
         return out
 
 
+class Glitch(Particles):
+    """Digital glitches: the board idles on the first colour with a dark scanline rolling down,
+    then tears — rows slide sideways in chunks of the palette colours, blocks drop out to black or
+    burn white, and now and then the whole board blinks. Red, white and black look the part."""
+    ROW = {led: round(y * 5) for led, x, y in KEYS}
+
+    def burst(self, pal):
+        r, kind = self.rng, self.rng.random()
+        if kind < .07:                                       # the whole board blinks
+            return {"kind": "flash", "age": 0.0, "life": r.uniform(.08, .14), "col": r.choice(pal[1:] or pal)}
+        if kind < .55:                                       # a torn row sliding sideways
+            r0 = r.randrange(6)
+            cuts = sorted(r.random() for _ in range(r.randint(2, 4)))
+            return {"kind": "slice", "age": 0.0, "life": r.uniform(.15, .45), "rows": (r0, min(5, r0 + r.randint(0, 1))),
+                    "cuts": cuts, "cols": [r.choice(pal) for _ in range(len(cuts) + 1)],
+                    "off": r.random(), "vel": r.choice((-1, 1)) * r.uniform(1.5, 5)}
+        if kind < .85:                                       # a solid block
+            c0, r0 = r.randrange(COLS), r.randrange(6)
+            return {"kind": "block", "age": 0.0, "life": r.uniform(.12, .35), "col": r.choice(pal),
+                    "box": (c0, c0 + r.randint(1, 5), r0, r0 + r.randint(0, 2))}
+        return {"kind": "dead", "age": 0.0, "life": r.uniform(.2, .5),             # scattered dead pixels
+                "keys": {r.choice(KEYS)[0]: r.choice(pal) for _ in range(r.randint(3, 9))}}
+
+    def frame(self, dt, ctx):
+        pal, adt = ctx["pal"], abs(dt)
+        for _ in range(self.spawn_n(dt, 4 * ctx["density"])):
+            self.items.append(self.burst(pal))
+        roll = (self.t * .3) % 1.6 - .3
+        out = {}
+        for led, x, y in KEYS:
+            b = .5 + .08 * math.sin(self.t * 23 + y * 9) - .4 * math.exp(-((y - roll) / (.1 * ctx["sc"])) ** 2)
+            out[led] = mul(pal[0], max(.05, b))
+        alive = []
+        for g in self.items:
+            g["age"] += adt
+            if g["age"] >= g["life"]:
+                continue
+            alive.append(g)
+            if g["kind"] == "flash":
+                out = {led: list(g["col"]) for led in out}
+            elif g["kind"] == "slice":
+                lo, hi = g["rows"]
+                shift = g["off"] + g["vel"] * g["age"] // .07 * .07  # jumps in steps, not smooth
+                for led, x, y in KEYS:
+                    if lo <= self.ROW[led] <= hi:
+                        u = (x / ctx["sc"] + shift) % 1
+                        out[led] = list(g["cols"][sum(u > c for c in g["cuts"])])
+            elif g["kind"] == "block":
+                c0, c1, r0, r1 = g["box"]
+                for led, x, y in KEYS:
+                    if c0 <= COL_OF[led] <= c1 and r0 <= self.ROW[led] <= r1:
+                        out[led] = list(g["col"])
+            else:
+                for led, c in g["keys"].items():
+                    out[led] = list(c)
+        self.items = alive
+        return out
+
+
 # ---------------------------------------------------------------- typing reactive
 class Typing(Effect):
     keys = True
@@ -423,7 +482,7 @@ class Trails(Typing):
 EFFECTS = {
     "wave": Wave, "center": Center, "diag": Diagonal, "rings": Rings, "swirl": Swirl, "breathe": Breathe,
     "aurora": Aurora, "plasma": Plasma, "lava": Lava, "heartbeat": Heartbeat, "scanner": Scanner,
-    "stars": Stars, "confetti": Confetti, "rain": Rain, "meteors": Meteors, "fire": Fire,
+    "stars": Stars, "confetti": Confetti, "rain": Rain, "meteors": Meteors, "fire": Fire, "glitch": Glitch,
     "splash": Splash, "trails": Trails, "static": Static,
 }
 
