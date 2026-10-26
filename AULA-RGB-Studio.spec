@@ -1,7 +1,7 @@
 # PyInstaller build: one windowed .exe with the page, fonts and icon inside.  Run build.bat.
 a = Analysis(
     ["app.py"],
-    datas=[("web", "web"), ("assets/icon.ico", "assets"), ("assets/logo.png", "assets")],
+    datas=[("web", "web"), ("assets/icon.ico", "assets"), ("assets/logo.png", "assets"), ("assets/tray.png", "assets")],
     hiddenimports=["pystray._win32"],
 )
 pyz = PYZ(a.pure)

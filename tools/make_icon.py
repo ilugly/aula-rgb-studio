@@ -241,6 +241,15 @@ def square(img):
     return sq
 
 
+def tight(img, keep=.75):
+    """Square crop for the tray: fill the full height and let the outer leg tips run off the sides."""
+    bbox = img.getbbox()
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    side = max(int(w * keep), h)
+    cx, cy = (bbox[0] + bbox[2]) // 2, (bbox[1] + bbox[3]) // 2
+    return img.crop((cx - side // 2, cy - side // 2, cx + side // 2, cy + side // 2))
+
+
 def logo(name):
     img = VARIANTS[name][1]()
     return img if name == "pixel" else square(img)
@@ -283,9 +292,11 @@ if __name__ == "__main__":
     # tray sizes get a heavier stroke / thicker legs so the drawing doesn't fade to a hairline
     bold = (square(v_outline(stroke=81)) if name == "outline" else
             square(v_front_neat(name[6:], leg=95)) if name.startswith("front_") and name[6:] in BACK_MARKS else img)
-    frames = [(bold if s <= 32 else img).resize((s, s), resample) for s in (16, 24, 32, 48, 64, 128, 256)]
+    small = tight(v_front_neat(name[6:], leg=95)) if name.startswith("front_") and name[6:] in BACK_MARKS else bold
+    frames = [(small if s <= 32 else img).resize((s, s), resample) for s in (16, 24, 32, 48, 64, 128, 256)]
     frames[-1].save(os.path.join(ROOT, "assets", "icon.ico"), sizes=[f.size for f in frames], append_images=frames[:-1])
     bold.resize((128, 128), resample).save(os.path.join(ROOT, "assets", "logo.png"))   # page header
+    small.resize((64, 64), resample).save(os.path.join(ROOT, "assets", "tray.png"))    # pystray hands this to Windows as is
     prev = os.environ.get("ICON_PREVIEW_DIR")
     if prev:
         for f in frames[:3]:

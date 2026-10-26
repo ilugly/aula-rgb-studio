@@ -13,7 +13,7 @@ import server
 
 
 def icon_image():
-    for p in (os.path.join(server.RES, "assets", "icon.ico"), os.path.join(server.RES, "assets", "icon.png")):
+    for p in (os.path.join(server.RES, "assets", n) for n in ("tray.png", "icon.ico", "icon.png")):
         if os.path.exists(p):
             return Image.open(p)
     return Image.new("RGB", (64, 64), (220, 22, 143))
