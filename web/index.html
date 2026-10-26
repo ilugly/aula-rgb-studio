@@ -357,6 +357,10 @@
       <button class="btn" id="sleepSave" disabled>Сохранить</button>
     </div>
     <div class="row">
+      <div class="t"><b>Горячие клавиши</b><span>Ctrl+Alt+←/→ сцена · ↑/↓ цвета · PgUp/PgDn яркость · Пробел вкл/выкл. Родные Fn-сочетания клавиатуры до программы не доходят, поэтому здесь Ctrl+Alt.</span></div>
+      <label class="switch" style="margin:0"><input type="checkbox" id="hotkeys" disabled></label>
+    </div>
+    <div class="row">
       <div class="t"><b>Проверка связи</b><span>Вся клавиатура станет розовой на пару секунд.</span></div>
       <button class="btn hot" id="solidTest" disabled>Проверить</button>
     </div>
@@ -909,7 +913,7 @@ async function writeBlock(cmd, data) {
   await api("/api/write", { cmd, data: toHex(data) });
 }
 
-const needDevice = ["liveBtn", "solidTest", "reloadMem", "restoreBtn", "sleepSel", "sleepSave", "resetAllPal", "autostart", "quitBtn"];
+const needDevice = ["liveBtn", "solidTest", "reloadMem", "restoreBtn", "sleepSel", "sleepSave", "resetAllPal", "autostart", "hotkeys", "quitBtn"];
 function setOffline(msg) {
   connected = false; setStatus(msg, "bad"); $("howto").classList.add("show");
   needDevice.forEach(id => $(id).disabled = true); $("backupBtn").disabled = true;
@@ -918,7 +922,7 @@ async function connect() {
   try {
     const s = await api("/api/status");
     connected = true;
-    setLive(s.live); applyServerSettings(s.settings); $("autostart").checked = s.autostart;
+    setLive(s.live); applyServerSettings(s.settings); $("autostart").checked = s.autostart; $("hotkeys").checked = s.settings.hotkeys !== false;
     setStatus("Программа запущена", s.live ? "live" : "on");
     $("howto").classList.remove("show");
     needDevice.forEach(id => $(id).disabled = false);
@@ -929,11 +933,15 @@ async function connect() {
   }
 }
 $("connectBtn").onclick = connect;
+let lastSig = "";
 setInterval(async () => {
   if (!connected) return;
   try {
     const s = await api("/api/status");
     if (s.live !== live) { setLive(s.live); renderLiveUi(); }
+    const sig = JSON.stringify([s.settings.fx, s.settings.palette, s.settings.bright, s.settings.speed]);
+    if (lastSig && sig !== lastSig && !pushTimer) { applyServerSettings(s.settings); }
+    lastSig = sig;
     if (s.live && s.error) { $("onAir").textContent = "нет связи"; log("Ошибка: " + s.error); }
     $("liveInfo").textContent = s.live ? `Сейчас на клавиатуру уходит ${s.fps} кадров в секунду.` : "Пригодится, если что-то пошло не так — его можно скопировать и отправить.";
   } catch { setOffline("Программа выключена"); }
@@ -1236,6 +1244,7 @@ $("solidTest").onclick = async () => {
   try { await api("/api/solid", { rgb: [255, 40, 200] }); toast("Клавиатура должна стать розовой на пару секунд"); }
   catch (e) { toast(e.message, true); }
 };
+$("hotkeys").onchange = e => api("/api/settings", { hotkeys: e.target.checked }).catch(x => toast(x.message, true));
 $("autostart").onchange = async e => {
   try { await api("/api/autostart", { on: e.target.checked }); await api("/api/settings", { autostart: e.target.checked });
     toast(e.target.checked ? "Программа будет запускаться вместе с Windows" : "Автозапуск выключен"); }

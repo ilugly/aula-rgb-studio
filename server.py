@@ -9,6 +9,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import hotkeys
 from aula_hid import find_dongle, Dev, pkt, split
 
 FROZEN = getattr(sys, "frozen", False)           # running as the PyInstaller .exe
@@ -114,7 +115,7 @@ kb = Keyboard()
 import effects
 
 DEFAULTS = {"fx": "wave", "theme": "pinkpurple", "palette": ["#ff4fd8", "#b14dff", "#6a3dff"], "speed": 35, "scale": 100,
-            "bright": 100, "density": 50, "reverse": False, "fps": 14, "live": False, "autostart": False}
+            "bright": 100, "density": 50, "reverse": False, "fps": 14, "live": False, "autostart": False, "hotkeys": True}
 
 
 class Live(threading.Thread):
@@ -319,5 +320,6 @@ def start():
     except OSError:
         return None
     live.start()
+    hotkeys.start(live)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
