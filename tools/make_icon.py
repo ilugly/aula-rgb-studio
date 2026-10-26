@@ -7,7 +7,7 @@ import math, os, random, sys
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VARIANT = "outline"
+VARIANT = "front_blade"
 S = 1024
 PINK, PINK_DARK, WHITE, BLOOD = (255, 46, 160), (196, 18, 120), (255, 255, 255), (150, 0, 24)
 RED, RED_DARK = (255, 30, 70), (178, 0, 40)
@@ -88,7 +88,7 @@ def v_outline(stroke=31):
     return fill(ImageChops.subtract(m, inner))
 
 
-def front_parts(k=1.0, cy_frac=.5):
+def front_parts(k=1.0, cy_frac=.5, leg=50):
     """Spider seen head-on, crouched to attack: high arched knees, abdomen rising behind the head,
     angry slanted eyes and two hooked fangs. Returns separate masks so variants can colour them apart."""
     cx, cy = S / 2, S * cy_frac
@@ -98,7 +98,7 @@ def front_parts(k=1.0, cy_frac=.5):
     for hip, knee, tip in (((70, 20), (170, -330), (330, 300)), ((85, 0), (290, -270), (440, 250)),
                            ((90, -20), (380, -170), (490, 170)), ((85, -40), (430, -60), (500, 90))):
         for s in (-1, 1):
-            taper(d, P([(s * hip[0], hip[1]), (s * knee[0], knee[1]), (s * tip[0], tip[1])]), 50 * k, 6 * k)
+            taper(d, P([(s * hip[0], hip[1]), (s * knee[0], knee[1]), (s * tip[0], tip[1])]), leg * k, 6 * k)
     for s in (-1, 1):                                    # pedipalps and fangs
         taper(d, P([(s * 70, 80), (s * 105, 150), (s * 70, 210)]), 34 * k, 8 * k)
         taper(d, P([(s * 32, 100), (s * 48, 200), (s * 8, 285)]), 40 * k, 3 * k)
@@ -145,9 +145,9 @@ def back_mark(style):
     return m
 
 
-def v_front_neat(style):
+def v_front_neat(style, leg=50):
     """Like Анфас, but the abdomen sits behind a dark seam and carries one tidy mark."""
-    p = front_parts()
+    p = front_parts(leg=leg)
     front = ImageChops.lighter(p["legs"], p["head"])
     abd = ImageChops.subtract(p["abdomen"], front.filter(ImageFilter.MaxFilter(19)))
     abd = ImageChops.subtract(abd, ImageChops.multiply(back_mark(style), p["abdomen"].filter(ImageFilter.MinFilter(25))))
@@ -223,14 +223,14 @@ def v_thread():
     return fill(m)
 
 
+BACK_MARKS = {"clean": "гладкий", "chevrons": "2 шеврона", "hourglass": "песочные часы",
+              "blade": "клинок", "rings": "дуги", "eye": "третий глаз"}
 VARIANTS = {"sharp": ("Острый", v_sharp), "glitch": ("Глитч (сейчас)", v_glitch), "outline": ("Контур", v_outline),
             "pixel": ("Пиксельный", v_pixel), "thread": ("На нити", v_thread),
             "front": ("Анфас", v_front), "front_duo": ("Анфас, 2 цвета", v_front_duo),
             "front_outline": ("Анфас, контур", v_front_outline), "front_split": ("Анфас, половинки", v_front_split),
             "face": ("Морда", v_face),
-            **{f"front_{st}": (f"Анфас: {t}", lambda st=st: v_front_neat(st)) for st, t in
-               (("clean", "гладкий"), ("chevrons", "2 шеврона"), ("hourglass", "песочные часы"),
-                ("blade", "клинок"), ("rings", "дуги"), ("eye", "третий глаз"))}}
+            **{f"front_{st}": (f"Анфас: {t}", lambda st=st: v_front_neat(st)) for st, t in BACK_MARKS.items()}}
 
 
 def square(img):
@@ -280,8 +280,9 @@ if __name__ == "__main__":
     img = logo(name)
     resample = Image.NEAREST if name == "pixel" else Image.LANCZOS
     img.resize((256, 256), resample).save(os.path.join(ROOT, "assets", "icon.png"))
-    # the outline gets a heavier stroke at tray sizes so it doesn't fade to a hairline
-    bold = square(v_outline(stroke=81)) if name == "outline" else img
+    # tray sizes get a heavier stroke / thicker legs so the drawing doesn't fade to a hairline
+    bold = (square(v_outline(stroke=81)) if name == "outline" else
+            square(v_front_neat(name[6:], leg=95)) if name.startswith("front_") and name[6:] in BACK_MARKS else img)
     frames = [(bold if s <= 32 else img).resize((s, s), resample) for s in (16, 24, 32, 48, 64, 128, 256)]
     frames[-1].save(os.path.join(ROOT, "assets", "icon.ico"), sizes=[f.size for f in frames], append_images=frames[:-1])
     bold.resize((128, 128), resample).save(os.path.join(ROOT, "assets", "logo.png"))   # page header
