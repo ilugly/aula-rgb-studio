@@ -452,7 +452,7 @@ const EFFECTS = [
   ["aurora", "Северное сияние", "мягкие волны"], ["plasma", "Плазма", "переливы"], ["lava", "Лавовая лампа", "плывущие пятна"],
   ["heartbeat", "Сердцебиение", "двойной удар"], ["scanner", "Сканер", "полоса туда-обратно"], ["stars", "Звёзды", "мерцают", true],
   ["confetti", "Конфетти", "вспышки", true], ["rain", "Дождь", "капли сверху", true], ["meteors", "Метеоры", "летят с хвостами", true],
-  ["fire", "Огонь", "пламя снизу"], ["splash", "Всплески", "от нажатых клавиш"], ["trails", "Следы набора", "клавиши тлеют"],
+  ["fire", "Огонь", "пламя снизу"], ["glitch", "Глитч", "рваные помехи", true], ["splash", "Всплески", "от нажатых клавиш"], ["trails", "Следы набора", "клавиши тлеют"],
   ["static", "Градиент", "без движения"],
 ];
 const THEMES = {
@@ -469,9 +469,9 @@ const THEMES = {
   malachite:  ["Малахит",           ["#002a0c", "#008a2e", "#e8b33a"]],
   fire:       ["Пламя",             ["#3a0000", "#c81000", "#ff5a00", "#ffb300", "#fff1a0"]],
   lava:       ["Лава",              ["#ff0000", "#ff3c00", "#ff7b00", "#ffb700"]],
-  gold:       ["Золото",            ["#ffd700", "#ff9f00", "#fff3b0"]],
   candy:      ["Конфеты",           ["#ff4fd8", "#ffe14f", "#4fd8ff", "#8cff4f", "#b14dff"]],
   blood:      ["Рубин",             ["#ff0033", "#8b0000", "#ff4d6d"]],
+  glitch:     ["Глитч",             ["#ff0018", "#ffffff", "#000000"]],
   rainbow:    ["Радуга",            ["#ff0000", "#ffa500", "#ffff00", "#00ff00", "#00bfff", "#8a2be2"]],
   beigeemerald: ["Беж и изумруд",   ["#ffe2b8", "#d6b98c", "#00873a"]],
   cappuccino: ["Капучино",          ["#ffe8c8", "#e0a15a", "#7a3f12"]],
@@ -489,6 +489,7 @@ const SCENES = [
   ["Метеоритный дождь",       "meteors", "ice", { speed: 45, density: 55 }],
   ["Костёр",                  "fire", "fire", { speed: 40, scale: 100 }],
   ["Закат",                   "breathe", "sunset", { speed: 20, scale: 120 }],
+  ["Красно-белый глитч",       "glitch", "glitch", { speed: 35, density: 55 }],
   ["Сердцебиение",            "heartbeat", "pinkpurple", { speed: 35, scale: 100 }],
   ["Киберсканер",             "scanner", "cyberpunk", { speed: 40, scale: 100 }],
   ["Океанский прибой",        "center", "ocean", { speed: 25, scale: 140 }],
@@ -685,6 +686,26 @@ const ART = {
       }
     }
     for (let i = 0; i < 14; i++) { g.fillStyle = rgba(linPal(pal, .9), .8); g.beginPath(); g.arc(R() * W, H * (.05 + R() * .5), H * .012, 0, Math.PI * 2); g.fill(); }
+  },
+  glitch(g, W, H, pal, R) {
+    const cols = pal.map(hexToRgb), rows = 9, rh = H / rows;
+    g.fillStyle = rgba(cols[0], .5); g.fillRect(0, 0, W, H);
+    g.fillStyle = "rgba(0,0,0,.45)"; g.fillRect(0, H * .58, W, rh * 1.2);
+    for (let r = 0; r < rows; r++) {
+      if (R() < .35) continue;
+      let x = -R() * W * .3;
+      while (x < W) {
+        const w = W * (.06 + R() * .3), c = cols[Math.floor(R() * cols.length)];
+        g.fillStyle = rgba(c, .95); g.fillRect(x, r * rh, w, rh * (.55 + R() * .45));
+        x += w + (R() < .3 ? W * R() * .15 : 0);
+      }
+    }
+    g.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 4; i++) {
+      const y = R() * H, h = rh * (.2 + R() * .5), x = R() * W * .5, w = W * (.2 + R() * .5);
+      g.fillStyle = rgba(cols[0], .7); g.fillRect(x - W * .02, y, w, h);
+      g.fillStyle = "rgba(255,255,255,.7)"; g.fillRect(x + W * .02, y, w, h * .6);
+    }
   },
   splash(g, W, H, pal, R) {
     [[.3, .55], [.7, .4]].forEach(([x, y], k) => {
