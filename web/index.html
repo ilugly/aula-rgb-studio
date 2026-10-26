@@ -251,7 +251,7 @@
           <h2>НАСТРОЙКА</h2>
           <div class="knobrow" style="margin-top:0"><div class="lab"><span>Скорость</span><span class="num" id="speedV"></span></div><input id="speed" type="range" min="0" max="100" value="35"></div>
           <div class="knobrow"><div class="lab"><span>Размер узора</span><span class="num" id="scaleV"></span></div><input id="scale" type="range" min="30" max="250" value="100"></div>
-          <div class="knobrow"><div class="lab"><span>Яркость</span><span class="num" id="brightV"></span></div><input id="bright" type="range" min="5" max="100" value="100"></div>
+          <div class="knobrow"><div class="lab"><span>Яркость</span><span class="num" id="brightV"></span></div><input id="bright" type="range" min="0" max="100" value="100"></div>
           <div class="knobrow" id="densityRow"><div class="lab"><span>Сколько всего летает</span><span class="num" id="densityV"></span></div><input id="density" type="range" min="0" max="100" value="50"></div>
           <label class="switch">В обратную сторону <input type="checkbox" id="reverse"></label>
         </div>
@@ -349,6 +349,10 @@
       <label class="switch" style="margin:0"><input type="checkbox" id="autostart" disabled></label>
     </div>
     <div class="row">
+      <div class="t"><b>Fn-клавиши управляют анимацией</b><span>Fn+↑/↓ — яркость, Fn+←/→ — скорость, Fn+Tab — другие цвета, Fn+\ — следующая сцена. Крутилка в режиме подсветки тоже работает. Срабатывает через секунду после нажатия.</span></div>
+      <label class="switch" style="margin:0"><input type="checkbox" id="hotkeys" disabled></label>
+    </div>
+    <div class="row">
       <div class="t"><b>Сон клавиатуры</b><span>Через сколько минут без нажатий гаснет подсветка.</span></div>
       <select id="sleepSel" disabled>
         <option value="0">никогда</option><option value="60">1 мин</option><option value="120">2 мин</option><option value="180">3 мин</option>
@@ -380,6 +384,7 @@
 </div>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="catalog.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 let connected = false, live = false;
@@ -455,53 +460,9 @@ const EFFECTS = [
   ["fire", "Огонь", "пламя снизу"], ["splash", "Всплески", "от нажатых клавиш"], ["trails", "Следы набора", "клавиши тлеют"],
   ["static", "Градиент", "без движения"],
 ];
-const THEMES = {
-  pinkpurple: ["Розово-фиолетовый", ["#ff4fd8", "#b14dff", "#6a3dff"]],
-  sakura:     ["Сакура",            ["#ffc2e2", "#ff7eb9", "#ff3d8b", "#e0218a"]],
-  cyberpunk:  ["Киберпанк",         ["#ff2a6d", "#d300c5", "#7b2ff7", "#05d9e8"]],
-  vaporwave:  ["Вейпорвейв",        ["#ff71ce", "#01cdfe", "#05ffa1", "#b967ff"]],
-  aurora:     ["Сияние",            ["#00ff9d", "#00e1ff", "#4d5bff", "#b300ff"]],
-  ocean:      ["Океан",             ["#00e5ff", "#0091ff", "#2b3cff", "#00ffc8"]],
-  sunset:     ["Закат",             ["#ff2e63", "#ff6a3d", "#ffb347", "#c13584"]],
-  galaxy:     ["Галактика",         ["#ffffff", "#9d7bff", "#ff4fd8", "#3d5afe"]],
-  ice:        ["Лёд",               ["#ffffff", "#a8e6ff", "#3fa9ff", "#6a5cff"]],
-  emerald:    ["Изумруд",           ["#00330d", "#008f2e", "#00d84a", "#6cff6c"]],
-  malachite:  ["Малахит",           ["#002a0c", "#008a2e", "#e8b33a"]],
-  fire:       ["Пламя",             ["#3a0000", "#c81000", "#ff5a00", "#ffb300", "#fff1a0"]],
-  lava:       ["Лава",              ["#ff0000", "#ff3c00", "#ff7b00", "#ffb700"]],
-  gold:       ["Золото",            ["#ffd700", "#ff9f00", "#fff3b0"]],
-  candy:      ["Конфеты",           ["#ff4fd8", "#ffe14f", "#4fd8ff", "#8cff4f", "#b14dff"]],
-  blood:      ["Рубин",             ["#ff0033", "#8b0000", "#ff4d6d"]],
-  rainbow:    ["Радуга",            ["#ff0000", "#ffa500", "#ffff00", "#00ff00", "#00bfff", "#8a2be2"]],
-  beigeemerald: ["Беж и изумруд",   ["#ffe2b8", "#d6b98c", "#00873a"]],
-  cappuccino: ["Капучино",          ["#ffe8c8", "#e0a15a", "#7a3f12"]],
-  terracotta: ["Терракота",         ["#ffd9b0", "#e2683c", "#7a2210"]],
-  lavender:   ["Лаванда",           ["#ffe4c4", "#c9a2ff", "#7c55ff"]],
-};
-const SCENES = [
-  ["Розово-фиолетовая волна", "wave", "pinkpurple", { speed: 35, scale: 100 }],
-  ["Северное сияние",         "aurora", "aurora", { speed: 25, scale: 110 }],
-  ["Сакура под дождём",       "rain", "sakura", { speed: 30, density: 55 }],
-  ["Неоновый город",          "plasma", "cyberpunk", { speed: 35, scale: 90 }],
-  ["Звёздная ночь",           "stars", "galaxy", { speed: 30, density: 60 }],
-  ["Лавовая лампа",           "lava", "lava", { speed: 30, scale: 110 }],
-  ["Вейпорвейв-вихрь",        "swirl", "vaporwave", { speed: 30, scale: 110 }],
-  ["Метеоритный дождь",       "meteors", "ice", { speed: 45, density: 55 }],
-  ["Костёр",                  "fire", "fire", { speed: 40, scale: 100 }],
-  ["Закат",                   "breathe", "sunset", { speed: 20, scale: 120 }],
-  ["Сердцебиение",            "heartbeat", "pinkpurple", { speed: 35, scale: 100 }],
-  ["Киберсканер",             "scanner", "cyberpunk", { speed: 40, scale: 100 }],
-  ["Океанский прибой",        "center", "ocean", { speed: 25, scale: 140 }],
-  ["Конфетти",                "confetti", "candy", { speed: 40, density: 60 }],
-  ["Круги на воде",           "rings", "emerald", { speed: 30, scale: 100 }],
-  ["Изумрудная волна",        "wave", "emerald", { speed: 25, scale: 130 }],
-  ["Малахитовая лампа",       "lava", "malachite", { speed: 30, scale: 110 }],
-  ["Беж и изумруд",           "wave", "beigeemerald", { speed: 22, scale: 140 }],
-  ["Капучино",                "wave", "cappuccino", { speed: 22, scale: 140 }],
-  ["Терракота",               "wave", "terracotta", { speed: 22, scale: 140 }],
-  ["Лавандовый беж",          "wave", "lavender", { speed: 22, scale: 140 }],
-  ["Всплески от нажатий",     "splash", "pinkpurple", { speed: 40, scale: 100 }],
-];
+// themes: id → [name, colors]; scenes: [name, effect, theme, settings] (web/catalog.js)
+const THEMES = CATALOG.themes;
+const SCENES = CATALOG.scenes;
 let fx = "wave", theme = "pinkpurple", palette = [...THEMES.pinkpurple[1]];
 const grad = (p, deg = 90) => `linear-gradient(${deg}deg,${p.join(",")})`;
 const effName = id => EFFECTS.find(e => e[0] === id)[1];
@@ -888,7 +849,8 @@ async function writeBlock(cmd, data) {
   await api("/api/write", { cmd, data: toHex(data) });
 }
 
-const needDevice = ["liveBtn", "solidTest", "reloadMem", "restoreBtn", "sleepSel", "sleepSave", "resetAllPal", "autostart", "quitBtn"];
+const needDevice = ["liveBtn", "solidTest", "reloadMem", "restoreBtn", "sleepSel", "sleepSave", "resetAllPal", "autostart", "hotkeys", "quitBtn"];
+let settingsRev = 0;   // bumped by server.py when the keyboard's Fn shortcuts change the animation
 function setOffline(msg) {
   connected = false; setStatus(msg, "bad"); $("howto").classList.add("show");
   needDevice.forEach(id => $(id).disabled = true); $("backupBtn").disabled = true;
@@ -898,6 +860,7 @@ async function connect() {
     const s = await api("/api/status");
     connected = true;
     setLive(s.live); applyServerSettings(s.settings); $("autostart").checked = s.autostart;
+    $("hotkeys").checked = s.settings.hotkeys !== false; settingsRev = s.rev;
     setStatus("Программа запущена", s.live ? "live" : "on");
     $("howto").classList.remove("show");
     needDevice.forEach(id => $(id).disabled = false);
@@ -913,6 +876,7 @@ setInterval(async () => {
   try {
     const s = await api("/api/status");
     if (s.live !== live) { setLive(s.live); renderLiveUi(); }
+    if (s.rev !== settingsRev) { settingsRev = s.rev; applyServerSettings(s.settings); if (s.note) toast(s.note); }
     if (s.live && s.error) { $("onAir").textContent = "нет связи"; log("Ошибка: " + s.error); }
     $("liveInfo").textContent = s.live ? `Сейчас на клавиатуру уходит ${s.fps} кадров в секунду.` : "Пригодится, если что-то пошло не так — его можно скопировать и отправить.";
   } catch { setOffline("Программа выключена"); }
@@ -1218,6 +1182,10 @@ $("solidTest").onclick = async () => {
 $("autostart").onchange = async e => {
   try { await api("/api/autostart", { on: e.target.checked }); await api("/api/settings", { autostart: e.target.checked });
     toast(e.target.checked ? "Программа будет запускаться вместе с Windows" : "Автозапуск выключен"); }
+  catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
+};
+$("hotkeys").onchange = async e => {
+  try { await api("/api/settings", { hotkeys: e.target.checked }); }
   catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
 };
 $("quitBtn").onclick = async () => {

@@ -1,0 +1,51 @@
+// Colour themes and scenes, shared by the page and server.py (Fn shortcuts flip through them).
+// Everything after "CATALOG = " is plain JSON: keep it that way, server.py parses it.
+const CATALOG = {
+"themes": {
+  "pinkpurple": ["Розово-фиолетовый", ["#ff4fd8", "#b14dff", "#6a3dff"]],
+  "sakura": ["Сакура", ["#ffc2e2", "#ff7eb9", "#ff3d8b", "#e0218a"]],
+  "cyberpunk": ["Киберпанк", ["#ff2a6d", "#d300c5", "#7b2ff7", "#05d9e8"]],
+  "vaporwave": ["Вейпорвейв", ["#ff71ce", "#01cdfe", "#05ffa1", "#b967ff"]],
+  "aurora": ["Сияние", ["#00ff9d", "#00e1ff", "#4d5bff", "#b300ff"]],
+  "ocean": ["Океан", ["#00e5ff", "#0091ff", "#2b3cff", "#00ffc8"]],
+  "sunset": ["Закат", ["#ff2e63", "#ff6a3d", "#ffb347", "#c13584"]],
+  "galaxy": ["Галактика", ["#ffffff", "#9d7bff", "#ff4fd8", "#3d5afe"]],
+  "ice": ["Лёд", ["#ffffff", "#a8e6ff", "#3fa9ff", "#6a5cff"]],
+  "emerald": ["Изумруд", ["#00330d", "#008f2e", "#00d84a", "#6cff6c"]],
+  "malachite": ["Малахит", ["#002a0c", "#008a2e", "#e8b33a"]],
+  "fire": ["Пламя", ["#3a0000", "#c81000", "#ff5a00", "#ffb300", "#fff1a0"]],
+  "lava": ["Лава", ["#ff0000", "#ff3c00", "#ff7b00", "#ffb700"]],
+  "gold": ["Золото", ["#ffd700", "#ff9f00", "#fff3b0"]],
+  "candy": ["Конфеты", ["#ff4fd8", "#ffe14f", "#4fd8ff", "#8cff4f", "#b14dff"]],
+  "blood": ["Рубин", ["#ff0033", "#8b0000", "#ff4d6d"]],
+  "rainbow": ["Радуга", ["#ff0000", "#ffa500", "#ffff00", "#00ff00", "#00bfff", "#8a2be2"]],
+  "beigeemerald": ["Беж и изумруд", ["#ffe2b8", "#d6b98c", "#00873a"]],
+  "cappuccino": ["Капучино", ["#ffe8c8", "#e0a15a", "#7a3f12"]],
+  "terracotta": ["Терракота", ["#ffd9b0", "#e2683c", "#7a2210"]],
+  "lavender": ["Лаванда", ["#ffe4c4", "#c9a2ff", "#7c55ff"]]
+},
+"scenes": [
+  ["Розово-фиолетовая волна", "wave", "pinkpurple", {"speed": 35, "scale": 100}],
+  ["Северное сияние", "aurora", "aurora", {"speed": 25, "scale": 110}],
+  ["Сакура под дождём", "rain", "sakura", {"speed": 30, "density": 55}],
+  ["Неоновый город", "plasma", "cyberpunk", {"speed": 35, "scale": 90}],
+  ["Звёздная ночь", "stars", "galaxy", {"speed": 30, "density": 60}],
+  ["Лавовая лампа", "lava", "lava", {"speed": 30, "scale": 110}],
+  ["Вейпорвейв-вихрь", "swirl", "vaporwave", {"speed": 30, "scale": 110}],
+  ["Метеоритный дождь", "meteors", "ice", {"speed": 45, "density": 55}],
+  ["Костёр", "fire", "fire", {"speed": 40, "scale": 100}],
+  ["Закат", "breathe", "sunset", {"speed": 20, "scale": 120}],
+  ["Сердцебиение", "heartbeat", "pinkpurple", {"speed": 35, "scale": 100}],
+  ["Киберсканер", "scanner", "cyberpunk", {"speed": 40, "scale": 100}],
+  ["Океанский прибой", "center", "ocean", {"speed": 25, "scale": 140}],
+  ["Конфетти", "confetti", "candy", {"speed": 40, "density": 60}],
+  ["Круги на воде", "rings", "emerald", {"speed": 30, "scale": 100}],
+  ["Изумрудная волна", "wave", "emerald", {"speed": 25, "scale": 130}],
+  ["Малахитовая лампа", "lava", "malachite", {"speed": 30, "scale": 110}],
+  ["Беж и изумруд", "wave", "beigeemerald", {"speed": 22, "scale": 140}],
+  ["Капучино", "wave", "cappuccino", {"speed": 22, "scale": 140}],
+  ["Терракота", "wave", "terracotta", {"speed": 22, "scale": 140}],
+  ["Лавандовый беж", "wave", "lavender", {"speed": 22, "scale": 140}],
+  ["Всплески от нажатий", "splash", "pinkpurple", {"speed": 40, "scale": 100}]
+]
+};

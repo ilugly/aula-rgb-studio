@@ -53,14 +53,14 @@ class Keyboard:
         while self.dev.read(2):
             pass
 
-    def read_block(self, cmd):
+    def read_block(self, cmd, tries=5, wait=2.0):
         with self.lock:
             self._dev()
             rcmd, parts, total = cmd | 0x40, {}, None
-            for _ in range(5):
+            for _ in range(tries):
                 self._drain()
                 self._write(pkt(rcmd, 1, 0, 0, b""))
-                end, last = time.time() + 2, None
+                end, last = time.time() + wait, None
                 while time.time() < end:
                     if last and time.time() - last > 0.25:
                         break
@@ -114,7 +114,7 @@ kb = Keyboard()
 import effects
 
 DEFAULTS = {"fx": "wave", "theme": "pinkpurple", "palette": ["#ff4fd8", "#b14dff", "#6a3dff"], "speed": 35, "scale": 100,
-            "bright": 100, "density": 50, "reverse": False, "fps": 14, "live": False, "autostart": False}
+            "bright": 100, "density": 50, "reverse": False, "fps": 14, "live": False, "autostart": False, "hotkeys": True}
 
 
 class Live(threading.Thread):
@@ -131,6 +131,7 @@ class Live(threading.Thread):
             self.st["fx"] = "wave"
         self.fps_real = 0
         self.error = None
+        self.rev, self.note = 0, None   # bumped when the keyboard's Fn shortcuts change the settings
         self.shown = {}
         self.fx_name, self.fx = None, None
 
@@ -173,6 +174,102 @@ class Live(threading.Thread):
 live = Live()
 
 
+# ---------------------------------------------------------------- Fn shortcuts
+def _catalog():
+    with open(os.path.join(RES, "web", "catalog.js"), encoding="utf-8") as f:
+        src = f.read()
+    return json.loads(src.split("const CATALOG = ", 1)[1].strip().rstrip(";"))
+
+
+CATALOG = _catalog()
+SPEEDS = [12, 24, 35, 55, 80]   # firmware speed 0-4 → animation speed
+
+
+class _LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+
+def _idle_ms():
+    """Time since the last key press or mouse move anywhere in Windows."""
+    li = _LASTINPUTINFO(ctypes.sizeof(_LASTINPUTINFO))
+    if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(li)):
+        return 0
+    return (ctypes.windll.kernel32.GetTickCount() - li.dwTime) & 0xFFFFFFFF
+
+
+def _keys_held():
+    get = ctypes.windll.user32.GetAsyncKeyState
+    return any(get(vk) & 0x8000 for vk in range(0x08, 0xFF))
+
+
+class Hotkeys(threading.Thread):
+    """Lighting shortcuts (Fn+↑/↓, Fn+←/→, Fn+Tab, Fn+\\, the knob in lighting mode) while the animation plays.
+
+    The keyboard still handles them, but our frames cover its own effect, so they looked dead. They do
+    change the LED block, so it is read now and then and every change is applied to the animation:
+    brightness and speed as they are, a new effect colour → the next theme, a new effect → the next scene.
+    Reads only happen after a second without input: a key pressed during a read can lose its release.
+    """
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.base = None
+
+    def reset(self):
+        self.base = None
+
+    def run(self):
+        while True:
+            time.sleep(0.5)
+            st = live.st
+            if not (st["live"] and st.get("hotkeys", True)):
+                self.base = None
+                continue
+            if _idle_ms() < 1000 or _keys_held():
+                continue
+            try:
+                led = kb.read_block(CMD_LED, tries=1, wait=0.6)
+            except Exception:
+                self.base = None
+                time.sleep(2)   # asleep or busy: try again later
+                continue
+            if len(led) != 128 or led[126:128] != b"\x5a\xa5" or not 1 <= led[10] <= 34:
+                continue
+            o = 58 + 2 * (led[10] - 1)
+            cur = (led[10], led[o], led[o + 1] >> 4, led[o + 1] & 0x0F)
+            if self.base is not None and cur != self.base:
+                self.apply(self.base, cur)
+            self.base = cur
+
+    def apply(self, old, new):
+        st, note = live.st, None
+        if new[0] != old[0]:
+            # another effect has its own brightness/speed/colour: only "next" is meant
+            scenes = CATALOG["scenes"]
+            i = next((i for i, s in enumerate(scenes) if s[1] == st["fx"] and s[2] == st["theme"]), -1)
+            name, fx, th, opts = scenes[(i + 1) % len(scenes)]
+            st.update({"speed": 35, "scale": 100, "density": 50, **opts, "fx": fx, "theme": th,
+                       "palette": list(CATALOG["themes"][th][1])})
+            note = "Сцена: " + name
+        else:
+            if new[1] != old[1]:
+                st["bright"] = round(min(new[1], 9) * 100 / 9)
+                note = f"Яркость {st['bright']}%"
+            if new[2] != old[2]:
+                st["speed"] = SPEEDS[min(new[2], 4)]
+                note = f"Скорость {st['speed']}"
+            if new[3] != old[3]:
+                ids = list(CATALOG["themes"])
+                th = ids[(ids.index(st["theme"]) + 1) % len(ids)] if st["theme"] in ids else ids[0]
+                st.update({"theme": th, "palette": list(CATALOG["themes"][th][1])})
+                note = "Цвета: " + CATALOG["themes"][th][0]
+        if note:
+            live.save()
+            live.note, live.rev = note, live.rev + 1
+
+
+hotkeys = Hotkeys()
+
+
 # ---------------------------------------------------------------- autostart
 def set_autostart(on):
     if on:
@@ -211,11 +308,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self._local():
             return
         self.path = self.path.split("?", 1)[0]   # "?v=…" only busts the browser cache
-        if self.path in ("/", "/index.html"):
-            with open(os.path.join(RES, "web", "index.html"), "rb") as f:
+        if self.path in ("/", "/index.html", "/catalog.js"):
+            js = self.path == "/catalog.js"
+            with open(os.path.join(RES, "web", "catalog.js" if js else "index.html"), "rb") as f:
                 body = f.read()
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", "text/javascript; charset=utf-8" if js else "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
@@ -241,7 +339,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif self.path == "/api/status":
             self._json({"ok": True, "live": live.st["live"], "fps": live.fps_real, "error": live.error,
-                        "settings": live.st, "autostart": os.path.exists(STARTUP_FILE)})
+                        "settings": live.st, "autostart": os.path.exists(STARTUP_FILE), "rev": live.rev, "note": live.note})
         elif self.path == "/api/frame":
             self._json({"ok": True, "leds": live.shown, "live": live.st["live"]})
         elif self.path == "/api/memory":
@@ -273,6 +371,7 @@ class Handler(BaseHTTPRequestHandler):
                 if cmd == CMD_LED and data[126:128] != b"\x5a\xa5":
                     raise ValueError("повреждённый блок настроек")
                 kb.write_block(cmd, data)
+                hotkeys.reset()   # a change written from the page is not a shortcut
             elif self.path == "/api/settings":
                 for k, v in body.items():
                     if k in DEFAULTS:
@@ -319,5 +418,6 @@ def start():
     except OSError:
         return None
     live.start()
+    hotkeys.start()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
