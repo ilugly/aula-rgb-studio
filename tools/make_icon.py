@@ -10,6 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VARIANT = "outline"
 S = 1024
 PINK, PINK_DARK, WHITE, BLOOD = (255, 46, 160), (196, 18, 120), (255, 255, 255), (150, 0, 24)
+RED, RED_DARK = (255, 30, 70), (178, 0, 40)
 
 
 def taper(d, pts, w0, w1):
@@ -87,6 +88,75 @@ def v_outline(stroke=31):
     return fill(ImageChops.subtract(m, inner))
 
 
+def front_parts(k=1.0, cy_frac=.5):
+    """Spider seen head-on, crouched to attack: high arched knees, abdomen rising behind the head,
+    angry slanted eyes and two hooked fangs. Returns separate masks so variants can colour them apart."""
+    cx, cy = S / 2, S * cy_frac
+    P = lambda pts: [(cx + x * k, cy + y * k) for x, y in pts]
+    legs, abdomen, head, eyes, marks = (Image.new("L", (S, S), 0) for _ in range(5))
+    d = ImageDraw.Draw(legs)
+    for hip, knee, tip in (((70, 20), (170, -330), (330, 300)), ((85, 0), (290, -270), (440, 250)),
+                           ((90, -20), (380, -170), (490, 170)), ((85, -40), (430, -60), (500, 90))):
+        for s in (-1, 1):
+            taper(d, P([(s * hip[0], hip[1]), (s * knee[0], knee[1]), (s * tip[0], tip[1])]), 50 * k, 6 * k)
+    for s in (-1, 1):                                    # pedipalps and fangs
+        taper(d, P([(s * 70, 80), (s * 105, 150), (s * 70, 210)]), 34 * k, 8 * k)
+        taper(d, P([(s * 32, 100), (s * 48, 200), (s * 8, 285)]), 40 * k, 3 * k)
+    ImageDraw.Draw(abdomen).ellipse(P([(-140, -290), (140, -50)]), fill=255)
+    ImageDraw.Draw(head).polygon(P([(0, -105), (110, -70), (125, 25), (60, 120), (-60, 120), (-125, 25), (-110, -70)]), fill=255)
+    e = ImageDraw.Draw(eyes)
+    for s in (-1, 1):
+        e.polygon(P([(s * 18, 10), (s * 95, -22), (s * 82, 22), (s * 30, 38)]), fill=255)   # big, slanted down to the middle
+        e.polygon(P([(s * 22, -40), (s * 58, -55), (s * 52, -32)]), fill=255)              # small upper pair
+    m = ImageDraw.Draw(marks)
+    for y in (-240, -175, -110):                         # chevrons on the back
+        m.line(P([(-100, y - 10), (0, y + 30), (100, y - 10)]), fill=255, width=int(24 * k))
+    return dict(legs=legs, abdomen=abdomen, head=head, eyes=eyes, marks=marks)
+
+
+def front_mask(p):
+    m = ImageChops.lighter(ImageChops.lighter(p["legs"], p["abdomen"]), p["head"])
+    return ImageChops.subtract(ImageChops.subtract(m, p["eyes"]), ImageChops.subtract(p["marks"], p["head"]))
+
+
+def v_front():
+    """Head-on attack pose, solid pink-to-red, eyes and back chevrons cut out."""
+    return fill(front_mask(front_parts()), PINK, RED_DARK)
+
+
+def v_front_duo():
+    """Pink legs and head, a red abdomen behind them — two flat colours, nothing else."""
+    p = front_parts()
+    out = fill(ImageChops.subtract(p["abdomen"], p["marks"]), RED, RED_DARK)
+    body = ImageChops.subtract(ImageChops.lighter(p["legs"], p["head"]), p["eyes"])
+    gap = body.filter(ImageFilter.MaxFilter(17))        # thin dark seam so the colours don't bleed together
+    out.putalpha(ImageChops.subtract(out.getchannel("A"), gap))
+    out.alpha_composite(fill(body, PINK, PINK_DARK))
+    return out
+
+
+def v_front_outline(stroke=31):
+    """The head-on spider as a contour, matching the current outline logo."""
+    m = front_mask(front_parts()).filter(ImageFilter.MaxFilter(9 + stroke // 3 // 2 * 2))
+    return fill(ImageChops.subtract(m, m.filter(ImageFilter.MinFilter(stroke))), PINK, RED)
+
+
+def v_front_split():
+    """Mirror halves: pink on the left, red on the right."""
+    m = front_mask(front_parts())
+    half = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(half).rectangle((S // 2, 0, S, S), fill=255)
+    out = fill(ImageChops.subtract(m, half), PINK, PINK)
+    out.alpha_composite(fill(ImageChops.multiply(m, half), RED, RED))
+    return out
+
+
+def v_face():
+    """Close-up of the face only: wide head, four angry eyes, fangs, no abdomen — reads at 16 px."""
+    p = front_parts(k=1.25, cy_frac=.5)
+    return fill(ImageChops.subtract(ImageChops.lighter(p["legs"], p["head"]), p["eyes"]), PINK, RED_DARK)
+
+
 PIXEL = ["................",
          ".#............#.",
          "..#..........#..",
@@ -124,7 +194,10 @@ def v_thread():
 
 
 VARIANTS = {"sharp": ("Острый", v_sharp), "glitch": ("Глитч (сейчас)", v_glitch), "outline": ("Контур", v_outline),
-            "pixel": ("Пиксельный", v_pixel), "thread": ("На нити", v_thread)}
+            "pixel": ("Пиксельный", v_pixel), "thread": ("На нити", v_thread),
+            "front": ("Анфас", v_front), "front_duo": ("Анфас, 2 цвета", v_front_duo),
+            "front_outline": ("Анфас, контур", v_front_outline), "front_split": ("Анфас, половинки", v_front_split),
+            "face": ("Морда", v_face)}
 
 
 def square(img):
