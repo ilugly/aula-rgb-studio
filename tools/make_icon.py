@@ -297,6 +297,8 @@ if __name__ == "__main__":
     frames[-1].save(os.path.join(ROOT, "assets", "icon.ico"), sizes=[f.size for f in frames], append_images=frames[:-1])
     bold.resize((128, 128), resample).save(os.path.join(ROOT, "assets", "logo.png"))   # page header
     small.resize((64, 64), resample).save(os.path.join(ROOT, "assets", "tray.png"))    # pystray hands this to Windows as is
+    brand = bold.crop(bold.getbbox())                                                  # page header: no empty margins
+    brand.resize((round(brand.width * 96 / brand.height), 96), resample).save(os.path.join(ROOT, "assets", "brand.png"))
     prev = os.environ.get("ICON_PREVIEW_DIR")
     if prev:
         for f in frames[:3]:

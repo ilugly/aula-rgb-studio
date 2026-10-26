@@ -219,8 +219,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
-        elif self.path in ("/logo.png", "/favicon.ico"):
-            name, ctype = ("logo.png", "image/png") if self.path == "/logo.png" else ("icon.ico", "image/x-icon")
+        elif self.path in ("/logo.png", "/brand.png", "/favicon.ico"):
+            name, ctype = ("icon.ico", "image/x-icon") if self.path == "/favicon.ico" else (self.path[1:], "image/png")
             with open(os.path.join(RES, "assets", name), "rb") as f:
                 body = f.read()
             self.send_response(200)

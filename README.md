@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/icon.png" width="96" alt=""></p>
+<p align="center"><img src="assets/icon.png" width="128" alt=""></p>
 
 <h1 align="center">AULA RGB Studio</h1>
 
