@@ -768,7 +768,15 @@ function drawThumbs() {
   }
 }
 let resizeTimer;
-window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawThumbs, 150); });
+const redrawSoon = () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawThumbs, 150); };
+window.addEventListener("resize", redrawSoon);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) redrawSoon(); });
+// a canvas drawn while its tab was hidden has no size yet: redraw as soon as one is on screen
+setInterval(() => {
+  for (const cv of document.querySelectorAll("[data-thumb] canvas")) {
+    if (cv.clientWidth && Math.abs(cv.width - Math.round(cv.clientWidth * (window.devicePixelRatio || 1))) > 1) return drawThumbs();
+  }
+}, 400);
 
 function renderLiveUi() {
   thumbSpec.clear();
@@ -951,6 +959,13 @@ setInterval(async () => {
     $("liveInfo").textContent = s.live ? `Сейчас на клавиатуру уходит ${s.fps} кадров в секунду.` : "Пригодится, если что-то пошло не так — его можно скопировать и отправить.";
   } catch { setOffline("Программа выключена"); }
 }, 1500);
+// the program was closed or restarted: pick the page up again by itself, no reload needed
+let reconnecting = false;
+setInterval(async () => {
+  if (connected || reconnecting) return;
+  reconnecting = true;
+  try { await connect(); if (connected) { renderLiveUi(); redrawSoon(); } } finally { reconnecting = false; }
+}, 2000);
 
 
 // ---------- Hotkey settings ----------

@@ -20,6 +20,22 @@ PORT = 8777
 URL = f"http://127.0.0.1:{PORT}/"
 SETTINGS_FILE = os.path.join(DATA, "settings.json")
 STARTUP_FILE = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup\AULA RGB Studio.vbs")
+LOG_FILE = os.path.join(DATA, "error.log")
+
+
+def log_error(what):
+    """Append to %APPDATA%/AULA RGB Studio/error.log (kept small) so a crash leaves a trace."""
+    import traceback
+    try:
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 200_000:
+            os.remove(LOG_FILE)
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + what + "\n" + (traceback.format_exc() if sys.exc_info()[0] else "") + "\n")
+    except Exception:
+        pass
+
+
+threading.excepthook = lambda a: log_error(f"thread {a.thread.name if a.thread else '?'}: {a.exc_value!r}")
 ctypes.WinDLL("winmm").timeBeginPeriod(1)  # 1 ms sleep resolution for the 5 ms packet gaps
 
 CMD_KEYMAP, CMD_CUSTOM, CMD_LED, CMD_PALETTE, CMD_PROFILE, CMD_LIVE = 0x01, 0x02, 0x04, 0x09, 0x0A, 0x88
@@ -140,6 +156,14 @@ class Live(threading.Thread):
             json.dump(self.st, f, ensure_ascii=False, indent=1)
 
     def run(self):
+        while True:
+            try:
+                self._loop()
+            except Exception:
+                log_error("animation loop crashed, restarting")
+                time.sleep(1)
+
+    def _loop(self):
         last, last_frame, last_sent, sent, clock = time.time(), b"", 0.0, 0, time.time()
         while True:
             st = self.st
@@ -155,6 +179,7 @@ class Live(threading.Thread):
                        "density": .2 + st["density"] / 50 * .8}
                 fr, self.shown = self.enc.encode(self.fx.step(dt, ctx), st["bright"] / 100, self.fx, ctx["sc"])
             except Exception as e:
+                log_error("effect failed")
                 self.error = "эффект: " + str(e)
                 time.sleep(.5)
                 continue
@@ -288,6 +313,7 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/solid":
                 kb.live(2, bytes(body.get("rgb", [255, 40, 200])))
             elif self.path == "/api/quit":
+                log_error("quit requested from the page")
                 self._json({"ok": True})
                 threading.Timer(0.3, quit_app).start()
                 return
@@ -295,6 +321,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "error": "not found"}, 404)
             self._json({"ok": True})
         except Exception as e:
+            log_error("request failed: " + self.path)
             self._json({"ok": False, "error": str(e)})
 
 
