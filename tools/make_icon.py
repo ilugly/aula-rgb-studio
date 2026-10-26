@@ -124,6 +124,36 @@ def v_front():
     return fill(front_mask(front_parts()), PINK, RED_DARK)
 
 
+def back_mark(style):
+    """A single tidy pattern for the abdomen (centre 0, -170 in front_parts coordinates)."""
+    m = Image.new("L", (S, S), 0)
+    d = ImageDraw.Draw(m)
+    P = lambda pts: [(S / 2 + x, S / 2 + y) for x, y in pts]
+    if style == "chevrons":                              # two thin, evenly spaced chevrons
+        for y in (-245, -195):
+            d.line(P([(-62, y), (0, y + 28), (62, y)]), fill=255, width=16, joint="curve")
+    elif style == "hourglass":                           # black-widow mark
+        d.polygon(P([(-34, -262), (34, -262), (0, -205)]), fill=255)
+        d.polygon(P([(0, -193), (34, -136), (-34, -136)]), fill=255)
+    elif style == "blade":                               # one long diamond down the spine
+        d.polygon(P([(0, -272), (20, -205), (0, -128), (-20, -205)]), fill=255)
+    elif style == "rings":                               # arcs following the shell
+        for r in (105, 72):
+            d.arc(P([(-r, -170 - r * .86), (r, -170 + r * .86)]), 205, 335, fill=255, width=14)
+    elif style == "eye":                                 # a third, bigger slit eye on the back
+        d.polygon(P([(-60, -215), (0, -248), (60, -215), (0, -182)]), fill=255)
+    return m
+
+
+def v_front_neat(style):
+    """Like Анфас, but the abdomen sits behind a dark seam and carries one tidy mark."""
+    p = front_parts()
+    front = ImageChops.lighter(p["legs"], p["head"])
+    abd = ImageChops.subtract(p["abdomen"], front.filter(ImageFilter.MaxFilter(19)))
+    abd = ImageChops.subtract(abd, ImageChops.multiply(back_mark(style), p["abdomen"].filter(ImageFilter.MinFilter(25))))
+    return fill(ImageChops.subtract(ImageChops.lighter(front, abd), p["eyes"]), PINK, RED_DARK)
+
+
 def v_front_duo():
     """Pink legs and head, a red abdomen behind them — two flat colours, nothing else."""
     p = front_parts()
@@ -197,7 +227,10 @@ VARIANTS = {"sharp": ("Острый", v_sharp), "glitch": ("Глитч (сейч
             "pixel": ("Пиксельный", v_pixel), "thread": ("На нити", v_thread),
             "front": ("Анфас", v_front), "front_duo": ("Анфас, 2 цвета", v_front_duo),
             "front_outline": ("Анфас, контур", v_front_outline), "front_split": ("Анфас, половинки", v_front_split),
-            "face": ("Морда", v_face)}
+            "face": ("Морда", v_face),
+            **{f"front_{st}": (f"Анфас: {t}", lambda st=st: v_front_neat(st)) for st, t in
+               (("clean", "гладкий"), ("chevrons", "2 шеврона"), ("hourglass", "песочные часы"),
+                ("blade", "клинок"), ("rings", "дуги"), ("eye", "третий глаз"))}}
 
 
 def square(img):
