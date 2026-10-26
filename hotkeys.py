@@ -3,7 +3,7 @@
 The keyboard's own Fn shortcuts are handled inside its firmware and never reach the PC, so these
 use Ctrl+Alt instead. THEMES and SCENES mirror the lists in web/index.html (keep them in sync).
 """
-import ctypes, threading
+import ctypes, threading, time
 from ctypes import wintypes
 
 THEMES = {
@@ -40,12 +40,50 @@ SCENES = [  # fx, theme, speed, scale, density
     ("wave", "lavender", 22, 140, 50), ("splash", "pinkpurple", 40, 100, 50),
 ]
 
-MOD_ALT, MOD_CONTROL, MOD_NOREPEAT = 0x1, 0x2, 0x4000
-VK_LEFT, VK_UP, VK_RIGHT, VK_DOWN, VK_PRIOR, VK_NEXT, VK_SPACE = 0x25, 0x26, 0x27, 0x28, 0x21, 0x22, 0x20
+MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, MOD_NOREPEAT = 0x1, 0x2, 0x4, 0x8, 0x4000
 WM_HOTKEY = 0x0312
 
-HELP = [("Ctrl+Alt+←/→", "предыдущая / следующая сцена"), ("Ctrl+Alt+↑/↓", "следующие / предыдущие цвета"),
-        ("Ctrl+Alt+PgUp/PgDn", "ярче / тусклее"), ("Ctrl+Alt+Пробел", "включить / выключить анимацию")]
+ACTIONS = {  # id: (default combo, label)
+    "scene_next": ("Ctrl+Alt+Right", "Следующая сцена"), "scene_prev": ("Ctrl+Alt+Left", "Предыдущая сцена"),
+    "theme_next": ("Ctrl+Alt+Up", "Следующие цвета"), "theme_prev": ("Ctrl+Alt+Down", "Предыдущие цвета"),
+    "bright_up": ("Ctrl+Alt+PageUp", "Ярче"), "bright_down": ("Ctrl+Alt+PageDown", "Тусклее"),
+    "toggle": ("Ctrl+Alt+Space", "Включить / выключить анимацию"),
+}
+DEFAULT_KEYS = {k: v[0] for k, v in ACTIONS.items()}
+_ACTION = {"scene_next": ("scene", 1), "scene_prev": ("scene", -1), "theme_next": ("theme", 1), "theme_prev": ("theme", -1),
+           "bright_up": ("bright", 10), "bright_down": ("bright", -10), "toggle": ("toggle", 0)}
+_NAMES = {"Left": 0x25, "Up": 0x26, "Right": 0x27, "Down": 0x28, "PageUp": 0x21, "PageDown": 0x22, "Space": 0x20,
+          "Home": 0x24, "End": 0x23, "Insert": 0x2D, "Delete": 0x2E, "Tab": 0x09, "Enter": 0x0D,
+          "Minus": 0xBD, "Equal": 0xBB, "Comma": 0xBC, "Period": 0xBE, "Slash": 0xBF, "Backquote": 0xC0,
+          "BracketLeft": 0xDB, "BracketRight": 0xDD, "Backslash": 0xDC, "Semicolon": 0xBA, "Quote": 0xDE}
+_NAMES.update({f"F{i}": 0x6F + i for i in range(1, 13)})
+_NAMES.update({chr(c): c for c in range(0x30, 0x3A)})
+_NAMES.update({chr(c): c for c in range(0x41, 0x5B)})
+_MODS = {"Ctrl": MOD_CONTROL, "Alt": MOD_ALT, "Shift": MOD_SHIFT, "Win": MOD_WIN}
+
+
+def parse(combo):
+    """'Ctrl+Alt+Right' -> (modifiers, vk); ValueError unless it has a modifier and a known key."""
+    parts = str(combo).split("+")
+    mods = 0
+    for m in parts[:-1]:
+        if m not in _MODS:
+            raise ValueError("неизвестная клавиша: " + m)
+        mods |= _MODS[m]
+    if not mods or parts[-1] not in _NAMES:
+        raise ValueError("нужна хотя бы одна из Ctrl / Alt / Shift / Win и обычная клавиша")
+    return mods, _NAMES[parts[-1]]
+
+
+def validate(keys):
+    seen = set()
+    for a, combo in keys.items():
+        if a not in ACTIONS:
+            raise ValueError("неизвестное действие: " + a)
+        p = parse(combo)
+        if p in seen:
+            raise ValueError("одно сочетание назначено дважды: " + combo)
+        seen.add(p)
 
 
 def _step(live, kind, d):
@@ -65,22 +103,45 @@ def _step(live, kind, d):
     live.save()
 
 
+_failed = []   # combos Windows refused (another program owns them); shown on the page
+_dirty = threading.Event()
+
+
+def reload():
+    _dirty.set()
+
+
 def start(live):
-    """Register the hotkeys on a thread of their own; the settings flag `hotkeys` is checked on every press."""
-    binds = [(VK_RIGHT, "scene", 1), (VK_LEFT, "scene", -1), (VK_UP, "theme", 1), (VK_DOWN, "theme", -1),
-             (VK_PRIOR, "bright", 10), (VK_NEXT, "bright", -10), (VK_SPACE, "toggle", 0)]
+    """Register the hotkeys on a thread of their own; `reload()` re-reads live.st['hk'] after a change."""
+    _dirty.set()
 
     def loop():
         u = ctypes.windll.user32
-        ok = [u.RegisterHotKey(None, i + 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, b[0]) for i, b in enumerate(binds)]
-        if not any(ok):
-            return
+        ids = {}
         msg = wintypes.MSG()
-        while u.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-            if msg.message == WM_HOTKEY and live.st.get("hotkeys", True):
-                try:
-                    _step(live, binds[msg.wParam - 1][1], binds[msg.wParam - 1][2])
-                except Exception:
-                    pass
+        while True:
+            if _dirty.is_set():
+                _dirty.clear()
+                for i in ids:
+                    u.UnregisterHotKey(None, i)
+                ids.clear()
+                _failed.clear()
+                keys = {**DEFAULT_KEYS, **live.st.get("hk", {})}
+                for n, (a, combo) in enumerate(keys.items(), 1):
+                    try:
+                        mods, vk = parse(combo)
+                    except ValueError:
+                        continue
+                    if u.RegisterHotKey(None, n, mods | MOD_NOREPEAT, vk):
+                        ids[n] = a
+                    else:
+                        _failed.append(combo)
+            while u.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                if msg.message == WM_HOTKEY and live.st.get("hotkeys", True) and msg.wParam in ids:
+                    try:
+                        _step(live, *_ACTION[ids[msg.wParam]])
+                    except Exception:
+                        pass
+            time.sleep(0.05)
 
     threading.Thread(target=loop, daemon=True).start()

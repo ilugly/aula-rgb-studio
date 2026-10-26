@@ -357,8 +357,13 @@
       <button class="btn" id="sleepSave" disabled>Сохранить</button>
     </div>
     <div class="row">
-      <div class="t"><b>Горячие клавиши</b><span>Ctrl+Alt+←/→ сцена · ↑/↓ цвета · PgUp/PgDn яркость · Пробел вкл/выкл. Родные Fn-сочетания клавиатуры до программы не доходят, поэтому здесь Ctrl+Alt.</span></div>
+      <div class="t"><b>Горячие клавиши</b><span>Работают, пока программа запущена. Родные Fn-сочетания клавиатуры до программы не доходят, поэтому используй Ctrl / Alt / Shift / Win + клавиша.</span></div>
       <label class="switch" style="margin:0"><input type="checkbox" id="hotkeys" disabled></label>
+    </div>
+    <div class="row" style="display:block">
+      <div id="hkList"></div>
+      <p class="note" id="hkNote" style="margin:10px 0 0">Нажми на сочетание, затем новые клавиши. Esc отменяет.</p>
+      <button class="btn" id="hkReset" style="margin-top:10px">Вернуть стандартные</button>
     </div>
     <div class="row">
       <div class="t"><b>Проверка связи</b><span>Вся клавиатура станет розовой на пару секунд.</span></div>
@@ -922,7 +927,7 @@ async function connect() {
   try {
     const s = await api("/api/status");
     connected = true;
-    setLive(s.live); applyServerSettings(s.settings); $("autostart").checked = s.autostart; $("hotkeys").checked = s.settings.hotkeys !== false;
+    setLive(s.live); applyServerSettings(s.settings); $("autostart").checked = s.autostart; $("hotkeys").checked = s.settings.hotkeys !== false; hkInit(s);
     setStatus("Программа запущена", s.live ? "live" : "on");
     $("howto").classList.remove("show");
     needDevice.forEach(id => $(id).disabled = false);
@@ -946,6 +951,47 @@ setInterval(async () => {
     $("liveInfo").textContent = s.live ? `Сейчас на клавиатуру уходит ${s.fps} кадров в секунду.` : "Пригодится, если что-то пошло не так — его можно скопировать и отправить.";
   } catch { setOffline("Программа выключена"); }
 }, 1500);
+
+
+// ---------- Hotkey settings ----------
+const HK_CODES = { ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down", PageUp: "PageUp", PageDown: "PageDown",
+  Space: "Space", Home: "Home", End: "End", Insert: "Insert", Delete: "Delete", Tab: "Tab", Enter: "Enter", Minus: "Minus", Equal: "Equal",
+  Comma: "Comma", Period: "Period", Slash: "Slash", Backquote: "Backquote", BracketLeft: "BracketLeft", BracketRight: "BracketRight",
+  Backslash: "Backslash", Semicolon: "Semicolon", Quote: "Quote" };
+const HK_SHOW = { Left: "←", Right: "→", Up: "↑", Down: "↓", Space: "Пробел", Minus: "-", Equal: "=", Comma: ",", Period: ".", Slash: "/",
+  Backquote: "`", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'" };
+const hkShow = c => c.split("+").map(p => HK_SHOW[p] || p).join(" + ");
+let hk = { def: {}, labels: {}, cur: {} }, hkRec = null;
+function hkRender() {
+  $("hkList").innerHTML = Object.keys(hk.labels).map(a => `<div style="display:flex;align-items:center;gap:12px;justify-content:space-between;padding:6px 0">
+    <span>${hk.labels[a]}</span><button class="btn" data-hk="${a}" style="min-width:190px">${hkRec === a ? "Нажми сочетание…" : hkShow(hk.cur[a])}</button></div>`).join("");
+  $("hkList").querySelectorAll("button").forEach(b => b.onclick = () => { hkRec = b.dataset.hk; hkRender(); });
+}
+async function hkSave(next) {
+  try { await api("/api/settings", { hk: next }); hk.cur = next; }
+  catch (e) { toast(e.message, true); }
+  hkRender(); hkCheck();
+}
+async function hkCheck() {
+  try { const s = await api("/api/status"); $("hkNote").textContent = s.hk_failed.length
+    ? "Windows не дала занять: " + s.hk_failed.map(hkShow).join(", ") + " (их уже использует другая программа)." : "Нажми на сочетание, затем новые клавиши. Esc отменяет."; } catch {}
+}
+function hkInit(s) {
+  hk = { def: s.hk_default, labels: s.hk_labels, cur: { ...s.hk_default, ...(s.settings.hk || {}) } };
+  hkRender(); hkCheck();
+}
+window.addEventListener("keydown", e => {
+  if (!hkRec) return;
+  e.preventDefault(); e.stopPropagation();
+  if (e.code === "Escape") { hkRec = null; return hkRender(); }
+  const key = HK_CODES[e.code] || (/^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5) : /^F([1-9]|1[0-2])$/.test(e.code) ? e.code : null);
+  if (!key) return;
+  const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Win"].filter(Boolean);
+  if (!mods.length) return toast("Добавь Ctrl, Alt, Shift или Win", true);
+  const a = hkRec; hkRec = null;
+  hkSave({ ...hk.cur, [a]: [...mods, key].join("+") });
+}, true);
+$("hkReset").onclick = () => hkSave({ ...hk.def });
 
 // ---------- Keyboard memory ----------
 let mem = null;          // { led, palette, custom, battery } as read from the keyboard

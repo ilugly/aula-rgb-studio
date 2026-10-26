@@ -115,7 +115,7 @@ kb = Keyboard()
 import effects
 
 DEFAULTS = {"fx": "wave", "theme": "pinkpurple", "palette": ["#ff4fd8", "#b14dff", "#6a3dff"], "speed": 35, "scale": 100,
-            "bright": 100, "density": 50, "reverse": False, "fps": 14, "live": False, "autostart": False, "hotkeys": True}
+            "bright": 100, "density": 50, "reverse": False, "fps": 14, "live": False, "autostart": False, "hotkeys": True, "hk": {}}
 
 
 class Live(threading.Thread):
@@ -242,7 +242,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif self.path == "/api/status":
             self._json({"ok": True, "live": live.st["live"], "fps": live.fps_real, "error": live.error,
-                        "settings": live.st, "autostart": os.path.exists(STARTUP_FILE)})
+                        "settings": live.st, "hk_default": hotkeys.DEFAULT_KEYS, "hk_labels": {k: v[1] for k, v in hotkeys.ACTIONS.items()}, "hk_failed": hotkeys._failed, "autostart": os.path.exists(STARTUP_FILE)})
         elif self.path == "/api/frame":
             self._json({"ok": True, "leds": live.shown, "live": live.st["live"]})
         elif self.path == "/api/memory":
@@ -275,10 +275,14 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("повреждённый блок настроек")
                 kb.write_block(cmd, data)
             elif self.path == "/api/settings":
+                if "hk" in body:
+                    hotkeys.validate({**hotkeys.DEFAULT_KEYS, **body["hk"]})
                 for k, v in body.items():
                     if k in DEFAULTS:
                         live.st[k] = v
                 live.save()
+                if "hk" in body:
+                    hotkeys.reload()
             elif self.path == "/api/autostart":
                 set_autostart(bool(body.get("on")))
             elif self.path == "/api/solid":
