@@ -346,6 +346,7 @@ on_quit = None  # set by app.py to take the tray icon down first
 
 
 def quit_app():
+    log_error("quit")
     if on_quit:
         on_quit()
     os._exit(0)

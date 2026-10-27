@@ -4,7 +4,7 @@ Starts the local helper (server.py) and sits in the Windows tray:
 double-click or "Открыть" opens the control page, the menu toggles the animation,
 autostart and quits. `--background` (used by autostart) skips opening the browser.
 """
-import os, sys, time, webbrowser
+import atexit, os, sys, time, webbrowser
 
 import pystray
 from PIL import Image
@@ -21,9 +21,13 @@ def icon_image():
 
 def main():
     if server.start() is None:
-        # another copy already runs: just bring its page up
-        webbrowser.open(server.URL)
+        # another copy already runs: just bring its page up (autostart stays quiet)
+        if "--background" not in sys.argv:
+            webbrowser.open(server.URL)
         return
+    # start and exit lines show in error.log when the program went away and whether it left on its own
+    server.log_error(f"started, pid {os.getpid()}, {' '.join(sys.argv[1:]) or 'no args'}")
+    atexit.register(server.log_error, "exited normally")
     if "--background" not in sys.argv:
         webbrowser.open(server.URL)
 
@@ -61,7 +65,7 @@ def main():
     while True:
         try:
             tray.run()
-        except Exception:
+        except BaseException:
             server.log_error("tray icon crashed")
         server.log_error("tray stopped, restarting it")
         time.sleep(2)
