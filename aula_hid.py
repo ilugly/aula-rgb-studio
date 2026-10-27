@@ -24,9 +24,19 @@ setupapi.SetupDiGetClassDevsW.restype = ctypes.c_void_p
 setupapi.SetupDiGetClassDevsW.argtypes = [ctypes.POINTER(GUID), wt.LPCWSTR, wt.HWND, wt.DWORD]
 setupapi.SetupDiEnumDeviceInterfaces.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(GUID), wt.DWORD, ctypes.POINTER(SP_DEVICE_INTERFACE_DATA)]
 setupapi.SetupDiGetDeviceInterfaceDetailW.argtypes = [ctypes.c_void_p, ctypes.POINTER(SP_DEVICE_INTERFACE_DATA), ctypes.c_void_p, wt.DWORD, ctypes.POINTER(wt.DWORD), ctypes.c_void_p]
+setupapi.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
 k32.CreateFileW.restype = wt.HANDLE
 k32.CreateFileW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.DWORD, wt.DWORD, wt.HANDLE]
 k32.CreateEventW.restype = wt.HANDLE
+k32.CreateEventW.argtypes = [ctypes.c_void_p, wt.BOOL, wt.BOOL, wt.LPCWSTR]
+k32.CloseHandle.argtypes = [wt.HANDLE]
+k32.ResetEvent.argtypes = [wt.HANDLE]
+k32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
+k32.WaitForSingleObject.restype = wt.DWORD
+k32.CancelIoEx.argtypes = [wt.HANDLE, ctypes.c_void_p]
+k32.WriteFile.argtypes = [wt.HANDLE, ctypes.c_void_p, wt.DWORD, ctypes.POINTER(wt.DWORD), ctypes.c_void_p]
+k32.ReadFile.argtypes = [wt.HANDLE, ctypes.c_void_p, wt.DWORD, ctypes.POINTER(wt.DWORD), ctypes.c_void_p]
+k32.GetOverlappedResult.argtypes = [wt.HANDLE, ctypes.c_void_p, ctypes.POINTER(wt.DWORD), wt.BOOL]
 hid.HidD_GetPreparsedData.argtypes = [wt.HANDLE, ctypes.POINTER(ctypes.c_void_p)]
 hid.HidP_GetCaps.argtypes = [ctypes.c_void_p, ctypes.POINTER(HIDP_CAPS)]
 hid.HidD_FreePreparsedData.argtypes = [ctypes.c_void_p]
@@ -42,18 +52,25 @@ def hid_paths():
     g = GUID()
     hid.HidD_GetHidGuid(ctypes.byref(g))
     h = setupapi.SetupDiGetClassDevsW(ctypes.byref(g), None, None, 0x12)
-    i = 0
-    while True:
-        d = SP_DEVICE_INTERFACE_DATA(); d.cbSize = ctypes.sizeof(d)
-        if not setupapi.SetupDiEnumDeviceInterfaces(h, None, ctypes.byref(g), i, ctypes.byref(d)):
-            break
-        need = wt.DWORD()
-        setupapi.SetupDiGetDeviceInterfaceDetailW(h, ctypes.byref(d), None, 0, ctypes.byref(need), None)
-        buf = ctypes.create_string_buffer(need.value)
-        ctypes.cast(buf, ctypes.POINTER(wt.DWORD))[0] = 8 if ctypes.sizeof(ctypes.c_void_p) == 8 else 6
-        if setupapi.SetupDiGetDeviceInterfaceDetailW(h, ctypes.byref(d), buf, need, None, None):
-            yield ctypes.wstring_at(ctypes.addressof(buf) + 4)
-        i += 1
+    if not h or h == INVALID:
+        return
+    try:
+        i = 0
+        while True:
+            d = SP_DEVICE_INTERFACE_DATA(); d.cbSize = ctypes.sizeof(d)
+            if not setupapi.SetupDiEnumDeviceInterfaces(h, None, ctypes.byref(g), i, ctypes.byref(d)):
+                break
+            i += 1
+            need = wt.DWORD()
+            setupapi.SetupDiGetDeviceInterfaceDetailW(h, ctypes.byref(d), None, 0, ctypes.byref(need), None)
+            if need.value < 8:   # the device left between the two calls: writing cbSize would overrun the buffer
+                continue
+            buf = ctypes.create_string_buffer(need.value)
+            ctypes.cast(buf, ctypes.POINTER(wt.DWORD))[0] = 8 if ctypes.sizeof(ctypes.c_void_p) == 8 else 6
+            if setupapi.SetupDiGetDeviceInterfaceDetailW(h, ctypes.byref(d), buf, need, None, None):
+                yield ctypes.wstring_at(ctypes.addressof(buf) + 4)
+    finally:
+        setupapi.SetupDiDestroyDeviceInfoList(h)
 
 
 def caps(handle):
@@ -73,8 +90,17 @@ class Dev:
         self.rbuf = ctypes.create_string_buffer(64)
         self.ov = None
 
+    def _finish(self, ov, n):
+        """Cancel an I/O that is still pending and wait until Windows is done with it.
+        The kernel writes into the OVERLAPPED and the buffer when the I/O ends, so they
+        must not be freed before that (it corrupted memory and crashed the app)."""
+        k32.CancelIoEx(self.h, ctypes.byref(ov))
+        k32.GetOverlappedResult(self.h, ctypes.byref(ov), ctypes.byref(n), True)
+
     def close(self):
-        k32.CancelIo(self.h)
+        if self.ov is not None:
+            self._finish(self.ov, wt.DWORD())
+            self.ov = None
         k32.CloseHandle(self.h)
         k32.CloseHandle(self.ev)
 
@@ -84,8 +110,11 @@ class Dev:
         buf = ctypes.create_string_buffer(bytes(data), len(data))
         ok = k32.WriteFile(self.h, buf, len(data), ctypes.byref(n), ctypes.byref(ov))
         if not ok and ctypes.get_last_error() == 997:
-            k32.WaitForSingleObject(ov.hEvent, 1000)
-            k32.GetOverlappedResult(self.h, ctypes.byref(ov), ctypes.byref(n), False)
+            if k32.WaitForSingleObject(ov.hEvent, 1000) == 0:
+                k32.GetOverlappedResult(self.h, ctypes.byref(ov), ctypes.byref(n), False)
+            else:   # the dongle did not take it in time (keyboard asleep): give up on this packet
+                self._finish(ov, n)
+                n.value = 0
         k32.CloseHandle(ov.hEvent)
         return n.value
 

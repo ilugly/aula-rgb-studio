@@ -35,6 +35,13 @@ def log_error(what):
         pass
 
 
+# a hard crash (access violation in native code) skips log_error: dump all thread stacks instead
+import faulthandler
+try:
+    _crash_log = open(os.path.join(DATA, "crash.log"), "a", encoding="utf-8")
+    faulthandler.enable(_crash_log, all_threads=True)
+except Exception:
+    pass
 threading.excepthook = lambda a: log_error(f"thread {a.thread.name if a.thread else '?'}: {a.exc_value!r}")
 ctypes.WinDLL("winmm").timeBeginPeriod(1)  # 1 ms sleep resolution for the 5 ms packet gaps
 
@@ -350,6 +357,13 @@ def start():
         srv = Server(("127.0.0.1", PORT), Handler)
     except OSError:
         return None
+    if os.path.exists(STARTUP_FILE):
+        # rewrite the autostart script for this copy: the .exe may have moved or the old script
+        # may point at an earlier layout (it used to start server.py, which no longer runs by itself)
+        try:
+            set_autostart(True)
+        except Exception:
+            log_error("could not refresh autostart")
     live.start()
     hotkeys.start(live)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
