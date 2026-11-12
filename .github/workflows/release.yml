@@ -2,15 +2,26 @@ name: Build and publish release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example, v1.8.0)
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   windows:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -44,6 +55,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -74,6 +87,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: startsWith(inputs.tag || github.ref_name, 'v')
     needs: [windows, macos]
     runs-on: ubuntu-latest
     permissions:
@@ -86,6 +100,5 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --notes-from-tag --title "AULA RGB Studio $TAG"
+          gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --notes-from-tag --title "AULA RGB Studio $RELEASE_TAG"
