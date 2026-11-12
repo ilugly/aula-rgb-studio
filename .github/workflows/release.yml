@@ -93,6 +93,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
@@ -101,4 +104,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --notes-from-tag --title "AULA RGB Studio $RELEASE_TAG"
+          gh release create "$RELEASE_TAG" release/* --verify-tag --notes-from-tag --title "AULA RGB Studio $RELEASE_TAG"
