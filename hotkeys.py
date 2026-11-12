@@ -3,7 +3,7 @@
 The keyboard's own Fn shortcuts are handled inside its firmware and never reach the PC, so these
 use Ctrl+Alt instead. THEMES and SCENES mirror the lists in web/index.html (keep them in sync).
 """
-import ctypes, threading, time
+import ctypes, sys, threading, time
 from ctypes import wintypes
 
 THEMES = {
@@ -114,6 +114,9 @@ def reload():
 def start(live):
     """Register the hotkeys on a thread of their own; `reload()` re-reads live.st['hk'] after a change."""
     _dirty.set()
+    if sys.platform == "darwin":
+        threading.Thread(target=_mac_loop, args=(live,), daemon=True).start()
+        return
 
     def loop():
         u = ctypes.windll.user32
@@ -145,3 +148,31 @@ def start(live):
             time.sleep(0.05)
 
     threading.Thread(target=loop, daemon=True).start()
+
+
+def _mac_loop(live):
+    from mac_input import modifiers, pressed
+
+    bindings = {}
+    held = set()
+    while True:
+        if _dirty.is_set():
+            _dirty.clear()
+            bindings.clear()
+            for action, combo in {**DEFAULT_KEYS, **live.st.get("hk", {})}.items():
+                if action in _ACTION:
+                    try:
+                        bindings[action] = parse(combo)
+                    except ValueError:
+                        continue
+        mods = modifiers()
+        active = {action for action, (mask, key) in bindings.items()
+                  if mods == mask and pressed(key)}
+        if live.st.get("hotkeys", True):
+            for action in active - held:
+                try:
+                    _step(live, *_ACTION[action])
+                except OSError:
+                    pass
+        held = active
+        time.sleep(0.02)

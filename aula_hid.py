@@ -1,5 +1,6 @@
-"""Minimal Windows HID access to the AULA F75 2.4G dongle (3554:FA09), no extra packages."""
-import ctypes, ctypes.wintypes as wt, sys, time, uuid
+"""Windows HID access to the AULA F75 2.4G dongle (3554:FA09)."""
+import ctypes, ctypes.wintypes as wt
+from protocol import pkt, split  # also used by the Windows diagnostic scripts
 
 setupapi = ctypes.WinDLL("setupapi", use_last_error=True)
 hid = ctypes.WinDLL("hid", use_last_error=True)
@@ -144,14 +145,6 @@ def find_dongle():
     return out
 
 
-def pkt(cmd, total, idx, sub, chunk):
-    b = bytearray(20)
-    b[0] = 0x13; b[1] = cmd; b[2] = total; b[3] = idx; b[4] = ((sub << 4) | len(chunk)) & 0xFF
-    b[5:5 + len(chunk)] = chunk
-    b[19] = sum(b[:19]) & 0xFF
-    return bytes(b)
-
-
-def split(cmd, sub, data):
-    chunks = [data[i:i + 14] for i in range(0, len(data), 14)] or [b""]
-    return [pkt(cmd, len(chunks), i, sub, c) for i, c in enumerate(chunks)]
+def find_rgb_path():
+    return next((p for p, c in find_dongle()
+                 if c and c.UsagePage == 0xFF02 and c.OutputReportByteLength == 20), None)

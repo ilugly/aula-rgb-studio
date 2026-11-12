@@ -1,30 +1,38 @@
 """AULA RGB Studio — local helper.
 
-Talks to the AULA F75 2.4G dongle over HID (Windows, no extra packages), plays live
+Talks to the AULA F75 2.4G dongle over HID, plays live
 animations by itself (keeps running with the browser closed) and serves the web UI at
 http://127.0.0.1:8777/. Started by app.py, which puts it in the system tray.
 """
-import ctypes, json, math, os, sys, threading, time, webbrowser
+import ctypes, json, math, os, plistlib, sys, threading, time, webbrowser
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import hotkeys
-from aula_hid import find_dongle, Dev, pkt, split
+from protocol import pkt, split
 
-FROZEN = getattr(sys, "frozen", False)           # running as the PyInstaller .exe
+MAC = sys.platform == "darwin"
+if MAC:
+    from aula_hid_mac import Dev, find_rgb_path
+else:
+    from aula_hid import Dev, find_rgb_path
+
+FROZEN = getattr(sys, "frozen", False)           # running a PyInstaller build
 RES = getattr(sys, "_MEIPASS", HERE)              # bundled web page, fonts, icon
-DATA = os.path.join(os.environ.get("APPDATA", HERE), "AULA RGB Studio")
+DATA = os.path.join(os.path.expanduser("~/Library/Application Support") if MAC
+                    else os.environ.get("APPDATA", HERE), "AULA RGB Studio")
 os.makedirs(DATA, exist_ok=True)
 PORT = 8777
 URL = f"http://127.0.0.1:{PORT}/"
 SETTINGS_FILE = os.path.join(DATA, "settings.json")
-STARTUP_FILE = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup\AULA RGB Studio.vbs")
+STARTUP_FILE = (os.path.expanduser("~/Library/LaunchAgents/dev.ilugly.aula-rgb-studio.plist") if MAC
+                else os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup\AULA RGB Studio.vbs"))
 LOG_FILE = os.path.join(DATA, "error.log")
 
 
 def log_error(what):
-    """Append to %APPDATA%/AULA RGB Studio/error.log (kept small) so a crash leaves a trace."""
+    """Append to a bounded error log in the application's data directory."""
     import traceback
     try:
         if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 200_000:
@@ -43,7 +51,8 @@ try:
 except Exception:
     pass
 threading.excepthook = lambda a: log_error(f"thread {a.thread.name if a.thread else '?'}: {a.exc_value!r}")
-ctypes.WinDLL("winmm").timeBeginPeriod(1)  # 1 ms sleep resolution for the 5 ms packet gaps
+if not MAC:
+    ctypes.WinDLL("winmm").timeBeginPeriod(1)  # 1 ms sleep resolution for the 5 ms packet gaps
 
 CMD_KEYMAP, CMD_CUSTOM, CMD_LED, CMD_PALETTE, CMD_PROFILE, CMD_LIVE = 0x01, 0x02, 0x04, 0x09, 0x0A, 0x88
 BLOCK_LEN = {CMD_KEYMAP: 504, CMD_CUSTOM: 378, CMD_LED: 128, CMD_PALETTE: 490}  # keymap: base layer, 126 × 4 bytes
@@ -56,7 +65,7 @@ class Keyboard:
 
     def _dev(self):
         if self.dev is None:
-            path = next((p for p, c in find_dongle() if c and c.UsagePage == 0xFF02 and c.OutputReportByteLength == 20), None)
+            path = find_rgb_path()
             if not path:
                 raise RuntimeError("Донгл AULA не найден. Вставь его и переключи клавиатуру в режим 2.4G.")
             self.dev = Dev(path)
@@ -74,8 +83,15 @@ class Keyboard:
             raise RuntimeError("Не удалось отправить данные донглу (он отключён?)")
 
     def _drain(self):
-        while self.dev.read(2):
+        while self._read(2):
             pass
+
+    def _read(self, timeout):
+        try:
+            return self.dev.read(timeout)
+        except OSError:
+            self._drop()
+            raise
 
     def read_block(self, cmd):
         with self.lock:
@@ -88,7 +104,7 @@ class Keyboard:
                 while time.time() < end:
                     if last and time.time() - last > 0.25:
                         break
-                    r = self.dev.read(50)
+                    r = self._read(50)
                     if not r or len(r) < 20 or r[1] != rcmd or (sum(r[:19]) & 0xFF) != r[19]:
                         continue
                     if r[2] & 0x80:
@@ -106,6 +122,16 @@ class Keyboard:
     def write_block(self, cmd, data):
         with self.lock:
             self._dev()
+            if cmd == CMD_KEYMAP:
+                current = self.read_block(cmd)
+                if len(current) != BLOCK_LEN[cmd]:
+                    raise ValueError("Клавиатура вернула неполную раскладку")
+                current_fn = {i for i in range(0, len(current), 4) if current[i] == 0x0D}
+                new_fn = {i for i in range(0, len(data), 4) if data[i] == 0x0D}
+                if current_fn and (current_fn != new_fn or any(
+                    current[i:i + 4] != data[i:i + 4] for i in current_fn
+                )):
+                    raise ValueError("В раскладке меняется Fn. Обнови данные с клавиатуры и попробуй снова.")
             for p in split(cmd, 0, data):
                 for _ in range(3):
                     self._drain()
@@ -113,7 +139,7 @@ class Keyboard:
                     end = time.time() + 1
                     ok = False
                     while time.time() < end:
-                        r = self.dev.read(50)
+                        r = self._read(50)
                         if r and len(r) >= 20 and r[1] == cmd and r[3] == p[3]:
                             if r[2] & 0x80:
                                 raise RuntimeError(f"Клавиатура отклонила команду 0x{cmd:02x}")
@@ -209,6 +235,16 @@ live = Live()
 # ---------------------------------------------------------------- autostart
 def set_autostart(on):
     if on:
+        if MAC:
+            args = [sys.executable] if FROZEN else [sys.executable, os.path.join(HERE, "app.py")]
+            os.makedirs(os.path.dirname(STARTUP_FILE), exist_ok=True)
+            temporary = STARTUP_FILE + ".tmp"
+            with open(temporary, "wb") as f:
+                plistlib.dump({"Label": "dev.ilugly.aula-rgb-studio",
+                               "ProgramArguments": [*args, "--background"],
+                               "RunAtLoad": True, "ProcessType": "Interactive"}, f)
+            os.replace(temporary, STARTUP_FILE)
+            return
         if FROZEN:
             cmd = f'""{sys.executable}"" --background'
         else:
@@ -274,6 +310,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif self.path == "/api/status":
             self._json({"ok": True, "live": live.st["live"], "fps": live.fps_real, "error": live.error,
+                        "platform": "macos" if MAC else "windows",
                         "settings": live.st, "hk_default": hotkeys.DEFAULT_KEYS, "hk_labels": {k: v[1] for k, v in hotkeys.ACTIONS.items()}, "hk_failed": hotkeys._failed, "autostart": os.path.exists(STARTUP_FILE)})
         elif self.path == "/api/frame":
             self._json({"ok": True, "leds": live.shown, "live": live.st["live"]})
@@ -338,7 +375,8 @@ class Server(ThreadingHTTPServer):
 
     def server_bind(self):
         import socket
-        self.socket.setsockopt(socket.SOL_SOCKET, getattr(socket, "SO_EXCLUSIVEADDRUSE", -5), 1)
+        if not MAC:
+            self.socket.setsockopt(socket.SOL_SOCKET, getattr(socket, "SO_EXCLUSIVEADDRUSE", -5), 1)
         super().server_bind()
 
 

@@ -345,7 +345,7 @@
   <!-- ===== Settings ===== -->
   <section class="page diag" id="page-diag">
     <div class="row">
-      <div class="t"><b>Запускать вместе с Windows</b><span>Программа стартует сама, без окон, и сразу включает последнюю анимацию.</span></div>
+      <div class="t"><b>Запускать при входе в систему</b><span>Программа запускается в фоне и продолжает анимацию, если она была включена.</span></div>
       <label class="switch" style="margin:0"><input type="checkbox" id="autostart" disabled></label>
     </div>
     <div class="row">
@@ -368,6 +368,9 @@
     <div class="row">
       <div class="t"><b>Проверка связи</b><span>Вся клавиатура станет розовой на пару секунд.</span></div>
       <button class="btn hot" id="solidTest" disabled>Проверить</button>
+    </div>
+    <div class="row">
+      <div class="t"><b>Колёсико и Fn</b><span>Их режимы задаёт клавиатура. Удерживай колёсико до мигания Caps/Win, чтобы переключиться между громкостью и подсветкой. Если Fn и колёсико работают по кабелю, проверь повторную привязку донгла 2.4G по инструкции AULA.</span></div>
     </div>
     <div class="row">
       <div class="t"><b>Заводские цвета для всех режимов</b><span>Если поэкспериментировал с цветами в памяти и хочешь всё вернуть.</span></div>
@@ -975,7 +978,8 @@ const HK_CODES = { ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowD
   Backslash: "Backslash", Semicolon: "Semicolon", Quote: "Quote" };
 const HK_SHOW = { Left: "←", Right: "→", Up: "↑", Down: "↓", Space: "Пробел", Minus: "-", Equal: "=", Comma: ",", Period: ".", Slash: "/",
   Backquote: "`", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'" };
-const hkShow = c => c.split("+").map(p => HK_SHOW[p] || p).join(" + ");
+let isMac = false;
+const hkShow = c => c.split("+").map(p => (isMac && { Win: "Cmd", Alt: "Option" }[p]) || HK_SHOW[p] || p).join(" + ");
 let hk = { def: {}, labels: {}, cur: {} }, hkRec = null;
 function hkRender() {
   $("hkList").innerHTML = Object.keys(hk.labels).map(a => `<div style="display:flex;align-items:center;gap:12px;justify-content:space-between;padding:6px 0">
@@ -989,9 +993,12 @@ async function hkSave(next) {
 }
 async function hkCheck() {
   try { const s = await api("/api/status"); $("hkNote").textContent = s.hk_failed.length
-    ? "Windows не дала занять: " + s.hk_failed.map(hkShow).join(", ") + " (их уже использует другая программа)." : "Нажми на сочетание, затем новые клавиши. Esc отменяет."; } catch {}
+    ? "Windows не дала занять: " + s.hk_failed.map(hkShow).join(", ") + " (их уже использует другая программа)."
+    : "Нажми на сочетание, затем новые клавиши. Esc отменяет."
+      + (isMac ? " Если сочетания не срабатывают, проверь разрешение «Мониторинг ввода» в macOS." : ""); } catch {}
 }
 function hkInit(s) {
+  isMac = s.platform === "macos";
   hk = { def: s.hk_default, labels: s.hk_labels, cur: { ...s.hk_default, ...(s.settings.hk || {}) } };
   hkRender(); hkCheck();
 }
@@ -1272,7 +1279,10 @@ function keymapLoaded() {
   keyDraft = new Uint8Array(mem.keymap);
   try { if (!localStorage.getItem("aulaKeymapBackup")) localStorage.setItem("aulaKeymapBackup", JSON.stringify({ date: new Date().toISOString(), keymap: toHex(mem.keymap) })); } catch {}
   $("keysRestore").disabled = false;
-  $("keysNote").textContent = "Розовым — клавиши, которые ты изменил, но ещё не записал.";
+  const fn = KEYS.find(k => decodeKey(entry(mem.keymap, k.led)).fn);
+  const fnNote = {53: "Fn — первая клавиша справа от пробела.", 59: "Fn — вторая клавиша справа от пробела."};
+  $("keysNote").textContent = "Розовым отмечены несохранённые изменения. "
+    + (fn ? fnNote[fn.led] || "Fn найдена в раскладке." : "Fn не найдена в видимой раскладке.");
   renderKeys();
 }
 $("keysRestore").onclick = () => {

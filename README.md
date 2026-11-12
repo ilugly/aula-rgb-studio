@@ -25,7 +25,13 @@
 
 > Windows может показать предупреждение «Windows защитила ваш компьютер», потому что у программы нет платной цифровой подписи. Нажми **«Подробнее» → «Выполнить в любом случае»**. Некоторые антивирусы ругаются на любые программы, собранные PyInstaller. Если не доверяешь `.exe`, запусти из исходников (см. ниже).
 
-Чтобы программа включалась сама, отметь в трее **«Запускать вместе с Windows»** или включи это в разделе «Настройки» на странице.
+Чтобы программа включалась сама, отметь в трее **«Запускать при входе в систему»** или включи это в разделе «Настройки» на странице.
+
+### macOS
+
+1. Скачай ZIP со страницы [Releases](../../releases/latest). Для Apple Silicon (M1 и новее) выбери `macOS-arm64.zip`, для Intel — `macOS-x86_64.zip`.
+2. Распакуй архив и перенеси **AULA RGB Studio.app** в «Программы». Сборка не нотарифицирована Apple. Если Gatekeeper заблокирует первый запуск, после попытки открыть приложение выбери «Всё равно открыть» в «Системные настройки» → «Конфиденциальность и безопасность».
+3. Вставь донгл, переключи клавиатуру в 2.4G и запусти приложение. Значок появится в строке меню. Если глобальные горячие клавиши или эффекты от печати не срабатывают, проверь разрешение «Мониторинг ввода» для Studio и перезапусти приложение.
 
 ## Что поддерживается
 
@@ -33,9 +39,15 @@
 |---|---|
 | Клавиатура | AULA F75 / F75 Pro |
 | Подключение | только 2.4G-донгл (`3554:FA09`). Провод и Bluetooth не поддерживаются |
-| Система | Windows 10 / 11 |
+| Система | Windows 10 / 11, macOS 15 (Apple Silicon и Intel) |
 
 Если клавиатура не отвечает, значит она уснула: нажми любую клавишу.
+
+### Колёсико и Fn
+
+- Удерживай колёсико до мигания Caps/Win. В офисном режиме вращение меняет громкость, а короткое нажатие выключает и включает звук. В игровом режиме колёсико управляет подсветкой.
+- У разных F75 Fn может стоять на первом или втором месте справа от пробела. Вкладка «Клавиши» подписывает Fn по данным из памяти клавиатуры. Проверь клавишу сочетанием Fn+↑/↓ с выключенной живой анимацией.
+- Если колёсико и Fn работают по кабелю, но не по 2.4G, проверь повторную привязку донгла. Вынь донгл, поставь переключатель в 2.4G, удерживай Fn+`~` около трёх секунд до быстрого мигания, затем вставь донгл. [Инструкция AULA F75](https://www.aulastar.com/uploads/soft/20241113/1-241113162Z3364.pdf).
 
 ## Запуск из исходников
 
@@ -49,16 +61,26 @@ python -m venv .venv
 
 Собрать `.exe` самому: `build.bat`, результат появится в `dist\AULA-RGB-Studio.exe`.
 
+На macOS:
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt pyinstaller
+.venv/bin/python app.py
+# Сборка .app для архитектуры используемого Python
+.venv/bin/pyinstaller AULA-RGB-Studio-macOS.spec
+```
+
 ## Как это устроено
 
 - `app.py` — иконка в трее, запускает всё остальное.
 - `server.py` — локальный сервер на `127.0.0.1:8777`: отдаёт страницу, читает и пишет настройки клавиатуры, крутит анимацию.
 - `effects.py` — все эффекты и упаковка кадра в формат клавиатуры (не больше 11 цветов и 126 байт на кадр, пауза 5 мс между пакетами).
-- `aula_hid.py` — доступ к донглу через Windows HID без сторонних библиотек.
+- `aula_hid.py` и `aula_hid_mac.py` — доступ к донглу через Windows HID и macOS HIDAPI соответственно.
 - `web/index.html` — интерфейс.
 - `tools/` — скрипты для диагностики протокола.
 
-Настройки хранятся в `%APPDATA%\AULA RGB Studio\settings.json`.
+Настройки хранятся в `%APPDATA%\AULA RGB Studio\settings.json` на Windows и в `~/Library/Application Support/AULA RGB Studio/settings.json` на macOS.
 
 ## Спасибо
 
@@ -77,4 +99,4 @@ python -m venv .venv
 
 ---
 
-**English:** unofficial Windows tray app for AULA F75 / F75 Pro RGB over the 2.4G dongle: multi-color live animations, scenes, typing-reactive effects, and an editor for the modes stored in the keyboard. Download the `.exe` from Releases. MIT licensed.
+**English:** unofficial Windows and macOS tray app for AULA F75 / F75 Pro RGB over the 2.4G dongle: multi-color live animations, scenes, typing-reactive effects, and an editor for the modes stored in the keyboard. Download your platform build from Releases. MIT licensed.

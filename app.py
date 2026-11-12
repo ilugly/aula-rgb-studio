@@ -53,7 +53,7 @@ def main():
             menu=pystray.Menu(
                 pystray.MenuItem("Открыть", open_page, default=True),
                 pystray.MenuItem("Анимация на клавиатуре", toggle_live, checked=lambda i: server.live.st["live"]),
-                pystray.MenuItem("Запускать вместе с Windows", toggle_autostart, checked=lambda i: os.path.exists(server.STARTUP_FILE)),
+                pystray.MenuItem("Запускать при входе в систему", toggle_autostart, checked=lambda i: os.path.exists(server.STARTUP_FILE)),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Выход", quit_),
             ),
