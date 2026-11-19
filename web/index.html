@@ -992,10 +992,9 @@ async function hkSave(next) {
   hkRender(); hkCheck();
 }
 async function hkCheck() {
-  try { const s = await api("/api/status"); $("hkNote").textContent = s.hk_failed.length
+  try { const s = await api("/api/status"); $("hkNote").textContent = s.input_access_help || (s.hk_failed.length
     ? "Windows не дала занять: " + s.hk_failed.map(hkShow).join(", ") + " (их уже использует другая программа)."
-    : "Нажми на сочетание, затем новые клавиши. Esc отменяет."
-      + (isMac ? " Если сочетания не срабатывают, проверь разрешение «Мониторинг ввода» в macOS." : ""); } catch {}
+    : "Нажми на сочетание, затем новые клавиши. Esc отменяет."); } catch {}
 }
 function hkInit(s) {
   isMac = s.platform === "macos";

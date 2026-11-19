@@ -15,6 +15,7 @@ from protocol import pkt, split
 MAC = sys.platform == "darwin"
 if MAC:
     from aula_hid_mac import Dev, find_rgb_path
+    from mac_input import INPUT_ACCESS_HELP, has_input_access
 else:
     from aula_hid import Dev, find_rgb_path
 
@@ -311,6 +312,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/status":
             self._json({"ok": True, "live": live.st["live"], "fps": live.fps_real, "error": live.error,
                         "platform": "macos" if MAC else "windows",
+                        "input_access_help": INPUT_ACCESS_HELP if MAC and not has_input_access() else None,
                         "settings": live.st, "hk_default": hotkeys.DEFAULT_KEYS, "hk_labels": {k: v[1] for k, v in hotkeys.ACTIONS.items()}, "hk_failed": hotkeys._failed, "autostart": os.path.exists(STARTUP_FILE)})
         elif self.path == "/api/frame":
             self._json({"ok": True, "leds": live.shown, "live": live.st["live"]})
@@ -371,7 +373,7 @@ class Handler(BaseHTTPRequestHandler):
 
 class Server(ThreadingHTTPServer):
     # Windows would otherwise let a second copy bind the same port, and both would drive the keyboard
-    allow_reuse_address = False
+    allow_reuse_address = MAC  # macOS can reopen the port while old connections are in TIME_WAIT
 
     def server_bind(self):
         import socket

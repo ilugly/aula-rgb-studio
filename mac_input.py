@@ -8,6 +8,15 @@ _key_state.restype = ctypes.c_bool
 _flags_state = _quartz.CGEventSourceFlagsState
 _flags_state.argtypes = [ctypes.c_int32]
 _flags_state.restype = ctypes.c_uint64
+has_input_access = _quartz.CGPreflightListenEventAccess
+has_input_access.argtypes = []
+has_input_access.restype = ctypes.c_bool
+
+INPUT_ACCESS_HELP = (
+    "Разреши AULA RGB Studio доступ в «Системные настройки» → "
+    "«Конфиденциальность и безопасность» → «Мониторинг ввода», "
+    "затем перезапусти программу."
+)
 
 # Windows virtual keys used by the shared settings and effects, mapped to macOS keycodes.
 KEYCODES = {

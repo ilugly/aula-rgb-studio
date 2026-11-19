@@ -3,6 +3,8 @@ import ctypes
 
 import hid
 
+from mac_input import INPUT_ACCESS_HELP, has_input_access
+
 
 def find_rgb_path():
     return next(
@@ -24,7 +26,12 @@ class Dev:
     def __init__(self, path):
         use_shared_access()
         self.device = hid.device()
-        self.device.open_path(path)
+        try:
+            self.device.open_path(path)
+        except OSError as exc:
+            if not has_input_access():
+                raise PermissionError(INPUT_ACCESS_HELP) from exc
+            raise
 
     def close(self):
         self.device.close()
