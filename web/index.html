@@ -365,6 +365,12 @@
       <p class="note" id="hkNote" style="margin:10px 0 0">Нажми на сочетание, затем новые клавиши. Esc отменяет.</p>
       <button class="btn" id="hkReset" style="margin-top:10px">Вернуть стандартные</button>
     </div>
+    <div id="screenshotRow" hidden>
+      <div class="row">
+        <div class="t"><b>Скриншот по правому Ctrl</b><span>Коротко нажми правый Ctrl и выдели область. Снимок сразу попадёт в буфер обмена.</span></div>
+        <label class="switch" style="margin:0"><input type="checkbox" id="screenshotRightCtrl" aria-label="Скриншот по правому Ctrl" disabled></label>
+      </div>
+    </div>
     <div class="row">
       <div class="t"><b>Проверка связи</b><span>Вся клавиатура станет розовой на пару секунд.</span></div>
       <button class="btn hot" id="solidTest" disabled>Проверить</button>
@@ -929,7 +935,7 @@ async function writeBlock(cmd, data) {
   await api("/api/write", { cmd, data: toHex(data) });
 }
 
-const needDevice = ["liveBtn", "solidTest", "reloadMem", "restoreBtn", "sleepSel", "sleepSave", "resetAllPal", "autostart", "hotkeys", "quitBtn"];
+const needDevice = ["liveBtn", "solidTest", "reloadMem", "restoreBtn", "sleepSel", "sleepSave", "resetAllPal", "autostart", "hotkeys", "screenshotRightCtrl", "quitBtn"];
 function setOffline(msg) {
   connected = false; setStatus(msg, "bad"); $("howto").classList.add("show");
   needDevice.forEach(id => $(id).disabled = true); $("backupBtn").disabled = true;
@@ -998,6 +1004,8 @@ async function hkCheck() {
 }
 function hkInit(s) {
   isMac = s.platform === "macos";
+  $("screenshotRow").hidden = !isMac;
+  $("screenshotRightCtrl").checked = s.settings.screenshot_right_ctrl === true;
   hk = { def: s.hk_default, labels: s.hk_labels, cur: { ...s.hk_default, ...(s.settings.hk || {}) } };
   hkRender(); hkCheck();
 }
@@ -1315,6 +1323,13 @@ $("solidTest").onclick = async () => {
   catch (e) { toast(e.message, true); }
 };
 $("hotkeys").onchange = e => api("/api/settings", { hotkeys: e.target.checked }).catch(x => toast(x.message, true));
+$("screenshotRightCtrl").onchange = async e => {
+  const toggle = e.target, checked = toggle.checked;
+  toggle.disabled = true;
+  try { await api("/api/settings", { screenshot_right_ctrl: checked }); }
+  catch (err) { toggle.checked = !checked; toast(err.message, true); }
+  finally { toggle.disabled = !connected; }
+};
 $("autostart").onchange = async e => {
   try { await api("/api/autostart", { on: e.target.checked }); await api("/api/settings", { autostart: e.target.checked });
     toast(e.target.checked ? "Программа будет запускаться вместе с Windows" : "Автозапуск выключен"); }

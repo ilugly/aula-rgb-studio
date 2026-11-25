@@ -166,6 +166,8 @@ import effects
 
 DEFAULTS = {"fx": "wave", "theme": "pinkpurple", "palette": ["#ff4fd8", "#b14dff", "#6a3dff"], "speed": 35, "scale": 100,
             "bright": 100, "density": 50, "reverse": False, "fps": 14, "live": False, "autostart": False, "hotkeys": True, "hk": {}}
+if MAC:
+    DEFAULTS["screenshot_right_ctrl"] = True
 
 
 class Live(threading.Thread):

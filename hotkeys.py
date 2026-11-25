@@ -1,4 +1,4 @@
-﻿"""Global Windows hotkeys: switch scenes, colour themes and brightness without opening the page.
+﻿"""Global hotkeys: switch scenes, colour themes and brightness without opening the page.
 
 The keyboard's own Fn shortcuts are handled inside its firmware and never reach the PC, so these
 use Ctrl+Alt instead. THEMES and SCENES mirror the lists in web/index.html (keep them in sync).
@@ -115,7 +115,14 @@ def start(live):
     """Register the hotkeys on a thread of their own; `reload()` re-reads live.st['hk'] after a change."""
     _dirty.set()
     if sys.platform == "darwin":
+        from mac_input import watch_screenshot_shortcut
+
         threading.Thread(target=_mac_loop, args=(live,), daemon=True).start()
+        threading.Thread(
+            target=watch_screenshot_shortcut,
+            args=(lambda: live.st["hotkeys"] and live.st["screenshot_right_ctrl"],),
+            daemon=True,
+        ).start()
         return
 
     def loop():

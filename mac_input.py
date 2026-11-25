@@ -1,5 +1,7 @@
 """Read macOS key state without intercepting keyboard input."""
 import ctypes
+import subprocess
+import time
 
 _quartz = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
 _key_state = _quartz.CGEventSourceKeyState
@@ -41,3 +43,53 @@ def pressed(vk):
 def modifiers():
     flags = _flags_state(0)
     return ((flags >> 19) & 1) | ((flags >> 17) & 2) | ((flags >> 15) & 4) | ((flags >> 17) & 8)
+
+
+def watch_screenshot_shortcut(enabled):
+    import CoreFoundation as cf
+    import Quartz as q
+
+    right_ctrl_keycode = 62  # kVK_RightControl
+    right_ctrl_flag = 0x2000  # NX_DEVICERCTLKEYMASK
+    left_ctrl_flag = 0x0001  # NX_DEVICELCTLKEYMASK
+    other_modifiers = (left_ctrl_flag | q.kCGEventFlagMaskShift | q.kCGEventFlagMaskAlternate
+                       | q.kCGEventFlagMaskCommand | q.kCGEventFlagMaskSecondaryFn)
+    started = None
+    capture = None
+
+    def on_event(proxy, kind, event, refcon):
+        nonlocal started, capture
+        if kind in (q.kCGEventTapDisabledByTimeout, q.kCGEventTapDisabledByUserInput):
+            started = None
+            q.CGEventTapEnable(tap, True)
+        elif (kind != q.kCGEventFlagsChanged
+              or q.CGEventGetIntegerValueField(event, q.kCGKeyboardEventKeycode) != right_ctrl_keycode):
+            started = None
+        else:
+            flags = q.CGEventGetFlags(event)
+            now = time.monotonic()
+            if flags & right_ctrl_flag:
+                started = now if enabled() and not flags & other_modifiers else None
+            else:
+                if (started is not None and now - started <= 0.35 and enabled()
+                        and (capture is None or capture.poll() is not None)):
+                    # The system provides the selection UI and writes the result directly to the pasteboard.
+                    try:
+                        capture = subprocess.Popen(["/usr/sbin/screencapture", "-i", "-s", "-c"])
+                    except OSError:
+                        pass
+                started = None
+        return event
+
+    events = (q.kCGEventFlagsChanged, q.kCGEventKeyDown, q.kCGEventKeyUp,
+              q.kCGEventLeftMouseDown, q.kCGEventRightMouseDown, q.kCGEventOtherMouseDown,
+              q.kCGEventScrollWheel)
+    tap = q.CGEventTapCreate(q.kCGSessionEventTap, q.kCGHeadInsertEventTap,
+                             q.kCGEventTapOptionListenOnly, sum(1 << kind for kind in events),
+                             on_event, None)
+    if tap is None:
+        return
+    source = cf.CFMachPortCreateRunLoopSource(None, tap, 0)
+    cf.CFRunLoopAddSource(cf.CFRunLoopGetCurrent(), source, cf.kCFRunLoopDefaultMode)
+    q.CGEventTapEnable(tap, True)
+    cf.CFRunLoopRun()

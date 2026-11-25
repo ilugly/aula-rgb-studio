@@ -2,3 +2,4 @@ pystray==0.19.5
 pillow==13.0.0
 hidapi==0.15.0; sys_platform == "darwin"
 pyobjc-framework-Cocoa; sys_platform == "darwin"
+pyobjc-framework-Quartz; sys_platform == "darwin"
